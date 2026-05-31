@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/uniStark/starks_skill/releases"><img src="https://img.shields.io/github/v/release/uniStark/starks_skill" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Claude%20Code-skill-8A2BE2" alt="Claude Code">
   <img src="https://img.shields.io/badge/Codex-skill-10A37F" alt="Codex">
