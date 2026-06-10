@@ -37,6 +37,7 @@ A single model has systematic blind spots — it tends to miss the same edge cas
 - macOS or Linux
 - Cross-model review needs the *other* engine's CLI on your `PATH` (`claude` / `codex`)
 - Optional: a knowledge base such as Obsidian for the memory step; `gh` (maintenance only)
+- Recommended: the [superpowers](https://github.com/obra/superpowers) plugin — starks hands off to its `systematic-debugging` / `writing-skills` / `brainstorming` skills when those situations arise (works fine without it; those hand-offs just won't fire)
 
 ## Installation
 

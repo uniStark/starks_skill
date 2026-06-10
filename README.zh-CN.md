@@ -35,6 +35,7 @@
 - macOS 或 Linux
 - 跨模型互审需要**另一端** CLI 在 `PATH` 中（`claude` / `codex`）
 - 可选：Obsidian（用作记忆层）与 `gh`
+- 推荐：[superpowers](https://github.com/obra/superpowers) 插件——遇到 bug / 写 skill / 大型设计时 starks 会转交它的 `systematic-debugging` / `writing-skills` / `brainstorming`；未安装不影响主流程，只是这些转交不生效
 
 ## 安装
 

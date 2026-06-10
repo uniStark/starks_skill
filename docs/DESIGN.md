@@ -158,6 +158,12 @@ invocation when the agent calls the other engine as a reviewer. This is the
 
 This keeps the recursion exactly one level deep, by construction.
 
+When Claude invokes Codex as the reviewer, the guard is doubled structurally:
+the invocation also disables the starks skill itself via Codex's per-skill
+`skills.config` override, so the reviewer cannot even see starks in its skill
+list. (Codex offers no global "load no skills" switch; the remaining skills
+are inert under the review prompt's explicit no-skill constraint.)
+
 ---
 
 ## Memory layer

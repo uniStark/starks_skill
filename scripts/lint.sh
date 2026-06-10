@@ -74,7 +74,7 @@ fi
 
 # 检查 2：结构 smoke —— 关键锚点存在，缺哪个记哪个。
 if [[ -f "$SKILL" ]]; then
-  anchors=("HARD-GATE" "STARKS_CROSS_REVIEW" "跨模型互审" "记忆收尾" "digraph starks")
+  anchors=("HARD-GATE" "STARKS_CROSS_REVIEW" "跨模型互审" "记忆收尾" "digraph starks" "记忆唤醒" "最多回炉 2 次" "prompts/spec-review.md" "prompts/code-review.md" "skills.config")
   for a in "${anchors[@]}"; do
     if ! grep -qF -- "$a" "$SKILL"; then
       failures+=("缺少关键锚点: $a")
@@ -82,7 +82,14 @@ if [[ -f "$SKILL" ]]; then
   done
 fi
 
-# 检查 3：防 fence 残留 smoke —— 没有任何一行以四个反引号开头。
+# 检查 3：SKILL.md 引用的 prompt 模板必须存在。
+for p in cross-review memory-writer spec-review code-review; do
+  if [[ ! -f "$SRC/prompts/$p.md" ]]; then
+    failures+=("缺少 prompt 模板: prompts/$p.md")
+  fi
+done
+
+# 检查 4：防 fence 残留 smoke —— 没有任何一行以四个反引号开头。
 if [[ -f "$SKILL" ]]; then
   fence_count="$(grep -c '^````' "$SKILL")"
   if [[ "$fence_count" -ne 0 ]]; then

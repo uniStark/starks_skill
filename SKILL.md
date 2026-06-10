@@ -116,7 +116,7 @@ digraph starks {
 ## 跨模型互审怎么做
 
 **前提：用户在第 3 步选了 B（要互审）**。然后把方案全文 + `prompts/cross-review.md` 的审查提示拼好，调**另一个**模型（务必带 `STARKS_CROSS_REVIEW=1` 防递归）：
-- Claude → Codex：`STARKS_CROSS_REVIEW=1 codex exec -m "$STARKS_REVIEW_MODEL" "<审查提示 + 方案全文>"`
+- Claude → Codex：`STARKS_CROSS_REVIEW=1 codex exec -c 'skills.config=[{name="starks",enabled=false}]' -m "$STARKS_REVIEW_MODEL" "<审查提示 + 方案全文>"`（`-c` 这段结构性禁掉被审端的 starks——reviewer 根本看不见它，防递归不再只靠自觉；Codex 无全局禁 skill 开关，其余 skill 由审查提示里"禁止调用任何 skill"约束）
 - Codex → Claude：`STARKS_CROSS_REVIEW=1 claude -p --model "$STARKS_REVIEW_MODEL" "<审查提示 + 方案全文>"`
 
 单轮、同步等结果；超时设 10 分钟左右防 hang（不计 token，但不可卡死）。拿回意见后由你整合成修订版方案，再给用户确认。
@@ -143,7 +143,7 @@ digraph starks {
 | 交互式提问 | `AskUserQuestion` | 终端追问 |
 | 进度跟踪 | `TodoWrite` | `update_plan` |
 | 浏览器可视化 | 复用 superpowers Visual Companion 脚本 | 同脚本（`CODEX_CI` 自动前台） |
-| 跨模型互审 | `codex exec -m "$STARKS_REVIEW_MODEL" "…"` | `claude -p --model "$STARKS_REVIEW_MODEL" "…"` |
+| 跨模型互审 | `codex exec …`（完整命令见"跨模型互审怎么做"） | `claude -p --model "$STARKS_REVIEW_MODEL" "…"` |
 | 子代理默认模型 | `$STARKS_AGENT_MODEL` | `$STARKS_AGENT_MODEL` |
 
 ## 红旗清单（宣称完成前自检）
