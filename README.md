@@ -26,7 +26,7 @@ A single model has systematic blind spots — it tends to miss the same edge cas
 - **PM-mode parallel sub-agents** — independent slices fan out to parallel sub-agents; tightly-coupled work stays sequential instead of being force-split.
 - **Two-stage review** — a reviewer checks spec compliance, then a reviewer checks code quality; failures loop back.
 - **Verification gate** — no "done / passing / fixed" claim without freshly-run evidence on the spot.
-- **Optional memory layer** — a project summary can be written to a knowledge base (e.g. Obsidian) when there's reusable progress; skipped entirely if unconfigured.
+- **Optional memory layer** — project memory is recalled at task start and a summary is written back when there's reusable progress (e.g. to Obsidian); skipped entirely if unconfigured.
 - **Dual-platform** — one `SKILL.md`, symlinked into both Claude Code and Codex.
 - **Anti-recursion guard** — when invoked as a cross-reviewer, starks answers once and exits instead of re-entering its own flow.
 
@@ -67,7 +67,7 @@ starks doesn't run the same heavyweight pipeline on everything. When real work s
 - **light** — a single clear concern across a few files. Do it (or confirm in one line) and skip the parallel / cross-review machinery, but the verification gate still applies.
 - **full** — multi-file, architectural, large behavior change, or genuinely uncertain. This runs the whole flow.
 
-For a full-tier task the flow is: **grill** the requirements one question at a time to surface hidden assumptions, edges, and success criteria → **draft** a plan → **present it for one decision** (a hard gate: start now / cross-review first / revise). Only if you pick cross-review does the plan go to the other model; the revised version comes back for sign-off. After approval the PM **fans out parallel sub-agents** for the independent work, runs the **two-stage review**, holds the **verification gate**, and — when a memory dir is configured and there's reusable progress — records a **project summary** to your knowledge base.
+For a full-tier task the flow is: **recall project memory** (when configured, so settled questions aren't re-asked) → **grill** the requirements — multiple-choice first, batching independent questions — to surface hidden assumptions, edges, and success criteria → **draft** a plan → **present it for one decision** (a hard gate: start now / cross-review first / revise). Only if you pick cross-review does the plan go to the other model; the revised version comes back for sign-off. After approval the PM **fans out parallel sub-agents** for the independent work, runs the **two-stage review** (at most two rework loops, then it stops and escalates back to you), holds the **verification gate**, and — when a memory dir is configured and there's reusable progress — records a **project summary** to your knowledge base.
 
 ## Cross-platform
 

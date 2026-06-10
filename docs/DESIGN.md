@@ -63,10 +63,14 @@ grill → draft → present + decide ─┬─ (A) proceed ───────
                                        memory (optional)
 ```
 
-1. **Grill** — Probe context first (read the relevant files and recent history),
-   then interrogate requirements one question at a time, preferring multiple-choice
-   prompts. Surface hidden assumptions, edge cases, and success criteria. This is
-   conversational, not a form.
+1. **Grill** — Recall project memory first (when a memory dir is configured, read
+   the project's summary and memory index so previously-settled questions are not
+   re-asked; memory is a snapshot — verify referenced files and conventions still
+   hold). Then probe context (read the relevant files and recent history) and
+   interrogate requirements with multiple-choice prompts, batching independent
+   questions and sequencing only those whose answers gate later ones. Surface
+   hidden assumptions, edge cases, and success criteria. This is conversational,
+   not a form.
 
 2. **Draft** — Close the requirements into a concrete plan and a task breakdown.
    The draft is lightweight and lives in the conversation; it is not a separate
@@ -91,7 +95,11 @@ grill → draft → present + decide ─┬─ (A) proceed ───────
 
 6. **Two-stage review** — A reviewer first checks the work against the agreed spec
    (did it build the right thing?), then checks code quality (did it build it
-   well?). Failures send the work back to execution.
+   well?), each following a short prompt template with structured findings.
+   Failures send the work back to execution — at most twice; if verification still
+   fails after two rework loops, the agent stops and escalates to the user instead
+   of looping silently. Independent slices enter review as they finish rather than
+   waiting for the slowest one.
 
 7. **Verification gate** — No "done" / "passing" / "fixed" claim is made without
    freshly produced verification evidence (test output, a run, a check). See
@@ -124,7 +132,9 @@ Key properties:
   complete and offers the user a choice (retry / switch reviewer / explicitly
   skip this round). It never pretends review passed.
 
-A generous timeout guards against hangs. The engine used on the far side is
+The reviewer may browse the repository read-only to ground its critique, but
+never writes or executes changes. A generous timeout (about ten minutes) guards
+against hangs. The engine used on the far side is
 selected via configuration (see Configuration), defaulting to your strongest
 available model.
 
@@ -155,9 +165,16 @@ This keeps the recursion exactly one level deep, by construction.
 The memory layer is **optional** and exists to make lessons reusable across
 projects.
 
+- **Recall at task start.** When configured, the project's summary and memory
+  index are read before grilling, so settled decisions and preferences are reused
+  instead of re-asked. Project naming is deterministic (repo root basename,
+  matched against the existing index) so memory does not fragment across runs.
 - **When it runs.** Only after the verification gate passes *and* the work made
   substantial, reusable progress. Trivial changes are skipped so the knowledge
-  store does not accumulate noise.
+  store does not accumulate noise. The "what happened" log keeps recent dated
+  entries instead of being overwritten wholesale; durable user preferences and
+  corrections go to the platform's native memory, while the vault keeps the
+  narrative summary (pointers, not copies).
 - **Where it writes.** A project summary is written under the directory named by
   `STARKS_MEMORY_DIR` — for example, a subdirectory of a personal knowledge vault.
   **If `STARKS_MEMORY_DIR` is unset, the entire memory step is skipped silently.**
@@ -213,8 +230,10 @@ truth and avoids drift between two platform-specific copies.
   independent work into parallel sub-agents for speed. When dependencies are
   strong and the work does not decompose cleanly, the agent does it sequentially
   and records why — forcing an artificial split only adds coordination cost.
-  Sub-agent prompts are focused, self-contained, and state their outputs and
-  acceptance criteria explicitly.
+  Sub-agent prompts are focused, self-contained, state their outputs and
+  acceptance criteria explicitly, and declare the files each agent owns: parallel
+  agents' write-sets must be disjoint, otherwise the work is sequenced or isolated
+  in worktrees.
 
 - **Configuration via environment variables.** All tunables — which model
   sub-agents use, which model reviews on the far side, where memory is written,

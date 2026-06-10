@@ -3,6 +3,8 @@
 硬约束（违反即失败）：
 - 若设置了 `$STARKS_STYLE_NOTE`，先读它学你的笔风后再写；未设置就跳过这步。
 - 写得短、贴你的风格，不要通用 AI 模板腔。
+- 项目名 = repo 根目录 basename；动笔前先读 `$STARKS_MEMORY_DIR/_index.md`，有相近旧条目就沿用旧名，不另开新目录（防记忆碎片化）。
+- `summary.md` 里"是什么 / 现状"可整段更新；"做了什么"按日期保留最近 5 条简短记录，别整篇覆盖丢历史。
 - 绝不读 / 写记忆库里的 `private/` 区（即 `$STARKS_MEMORY_DIR` 同级的 `private/`）及其任何子路径。
 - 不要调用 skill、不要派子代理、不要触发 starks。
 - 本机有 hook 会拦子代理用 Write 等文件写工具写文件；**一律用 shell 写入**（如 `cat > "$f" <<'EOF' … EOF`），不要用 Write 工具。
