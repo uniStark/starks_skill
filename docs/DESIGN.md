@@ -119,6 +119,11 @@ read: when the primary agent is Claude, the reviewer is Codex, and vice versa.
 
 Key properties:
 
+- **The plan travels via stdin, not as a command-line argument.** The review
+  prompt is the argument; the full plan is piped in (here-doc or a temp file).
+  Passing a large plan as an argument risks hitting the OS `ARG_MAX` limit —
+  which either errors out or, worse, silently truncates so the reviewer sees
+  only part of the plan. stdin has no such limit.
 - **User-triggered, never automatic.** Cross-review is option **B** at the
   present-and-decide gate. The agent neither runs it silently nor quietly skips it
   — it always offers it as a choice and lets the user decide.

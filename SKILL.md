@@ -115,9 +115,9 @@ digraph starks {
 
 ## 跨模型互审怎么做
 
-**前提：用户在第 3 步选了 B（要互审）**。然后把方案全文 + `prompts/cross-review.md` 的审查提示拼好，调**另一个**模型（务必带 `STARKS_CROSS_REVIEW=1` 防递归）：
-- Claude → Codex：`STARKS_CROSS_REVIEW=1 codex exec -c 'skills.config=[{name="starks",enabled=false}]' -m "$STARKS_REVIEW_MODEL" "<审查提示 + 方案全文>"`（`-c` 这段结构性禁掉被审端的 starks——reviewer 根本看不见它，防递归不再只靠自觉；Codex 无全局禁 skill 开关，其余 skill 由审查提示里"禁止调用任何 skill"约束）
-- Codex → Claude：`STARKS_CROSS_REVIEW=1 claude -p --model "$STARKS_REVIEW_MODEL" "<审查提示 + 方案全文>"`
+**前提：用户在第 3 步选了 B（要互审）**。审查提示（`prompts/cross-review.md`）当命令行参数，**方案全文走 stdin**（here-doc `<<'EOF' … EOF` 或 `cat 临时方案文件 |` 管道喂入）——**别把方案拼进命令行参数**：长方案当参数会撞系统 `ARG_MAX` 上限，轻则报 `argument list too long`、重则被静默截断让 reviewer 只看到半截方案。务必带 `STARKS_CROSS_REVIEW=1` 防递归：
+- Claude → Codex：`STARKS_CROSS_REVIEW=1 codex exec -c 'skills.config=[{name="starks",enabled=false}]' -m "$STARKS_REVIEW_MODEL" "<cross-review.md 审查提示>" <<'EOF'` … 方案全文 … `EOF`（`-c` 这段结构性禁掉被审端的 starks——reviewer 根本看不见它，防递归不再只靠自觉；Codex 无全局禁 skill 开关，其余 skill 由审查提示里"禁止调用任何 skill"约束；codex 把 stdin 作为 `<stdin>` 块附加。注意：codex 要求在受信任目录跑，非 git 仓需加 `--skip-git-repo-check`）
+- Codex → Claude：`STARKS_CROSS_REVIEW=1 claude -p --model "$STARKS_REVIEW_MODEL" "<cross-review.md 审查提示>" <<'EOF'` … 方案全文 … `EOF`
 
 单轮、同步等结果；超时设 10 分钟左右防 hang（不计 token，但不可卡死）。拿回意见后由你整合成修订版方案，再给用户确认。
 
