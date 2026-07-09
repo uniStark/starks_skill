@@ -419,12 +419,33 @@ run_nested_shell_regression() {
 }
 
 run_contract_checks() {
-  local skill readme readme_zh spec memory
+  local skill readme readme_zh spec memory runtime runtime_text skill_lines
+  runtime="$SRC/references/runtime.md"
   skill="$(cat "$SRC/SKILL.md")"
   readme="$(cat "$SRC/README.md")"
   readme_zh="$(cat "$SRC/README.zh-CN.md")"
   spec="$(cat "$SRC/prompts/spec-review.md")"
   memory="$(cat "$SRC/prompts/memory-writer.md")"
+
+  if [[ -s "$runtime" ]]; then
+    pass "runtime reference exists and is non-empty"
+  else
+    fail "runtime reference exists and is non-empty"
+  fi
+  assert_contains "$skill" "references/runtime.md" "skill routes runtime details to the runtime reference"
+  assert_not_contains "$skill" "digraph starks" "skill keeps the detailed state-machine graph out of the entrypoint"
+  skill_lines="$(wc -l < "$SRC/SKILL.md" | tr -d '[:space:]')"
+  if [[ "$skill_lines" -le 105 ]]; then
+    pass "skill entrypoint stays within 105 lines"
+  else
+    fail "skill entrypoint stays within 105 lines (actual=$skill_lines)"
+  fi
+  if [[ -s "$runtime" ]]; then
+    runtime_text="$(cat "$runtime")"
+    assert_contains "$runtime_text" "STARKS_REVIEW_MODEL_CODEX" "runtime reference documents the Codex reviewer model"
+    assert_contains "$runtime_text" "scripts/cross-review.sh" "runtime reference documents the cross-review wrapper"
+    assert_contains "$runtime_text" "spawn_agent" "runtime reference documents Codex subagent dispatch"
+  fi
 
   assert_contains "$skill" "scripts/cross-review.sh" "skill delegates fragile cross-review invocation to a script"
   assert_not_contains "$skill" 'name="starks"' "skill does not document obsolete Codex name config"
