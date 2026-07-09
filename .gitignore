@@ -3,6 +3,7 @@
 *.swp
 .idea/
 .vscode/
+.worktrees/
 
 # Local config — never publish real values
 .env
