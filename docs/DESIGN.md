@@ -27,7 +27,7 @@ anything. The tier sets the weight of the process.
 
 | Tier | What it covers | What runs |
 |---|---|---|
-| **Trivial** | One-line edits, pure lookups, concept explanations, obvious typos, reading a known file, running a known diagnostic. | Done directly. No grilling, no sub-agents. The completion gate still applies. |
+| **Trivial** | One-line real changes, obvious typos, or low-risk actions with an already-known procedure. | Done directly. No grilling, no sub-agents. The completion gate still applies. |
 | **Lightweight** | Small, self-contained changes with low uncertainty and a clear single owner. | Brief clarification if useful, then direct execution. Low overhead — do not reach for sub-agents reflexively. |
 | **Full** | Anything spanning multiple files or modules, architectural change, significant behavior change, high uncertainty, or work that needs design before implementation. | The complete full-tier flow described below. |
 
@@ -119,8 +119,9 @@ read: when the primary agent is Claude, the reviewer is Codex, and vice versa.
 
 Key properties:
 
-- **The plan travels via stdin, not as a command-line argument.** The review
-  prompt is the argument; the full plan is piped in (here-doc or a temp file).
+- **The plan travels via stdin, not as a command-line argument.**
+  `scripts/cross-review.sh` supplies the review prompt and pipes the full plan
+  to the selected reviewer engine.
   Passing a large plan as an argument risks hitting the OS `ARG_MAX` limit —
   which either errors out or, worse, silently truncates so the reviewer sees
   only part of the plan. stdin has no such limit.
@@ -137,11 +138,11 @@ Key properties:
   complete and offers the user a choice (retry / switch reviewer / explicitly
   skip this round). It never pretends review passed.
 
-The reviewer may browse the repository read-only to ground its critique, but
-never writes or executes changes. A generous timeout (about ten minutes) guards
-against hangs. The engine used on the far side is
-selected via configuration (see Configuration), defaulting to your strongest
-available model.
+Codex runs in a read-only sandbox; Claude runs with tools disabled and reviews
+only the supplied plan. Neither reviewer writes or executes changes. A generous
+timeout (about ten minutes) guards against hangs. The engine used on the far side is
+selected via configuration (see Configuration), defaulting to the reviewer
+CLI's configured model.
 
 ---
 
@@ -161,13 +162,23 @@ invocation when the agent calls the other engine as a reviewer. This is the
   It simply critiques the plan it received and exits.
 - If the variable is unset, it is the primary agent and proceeds normally.
 
+The wrapper also refuses to start when that variable is already present. This
+turns a prompt-level recursion rule into a second, deterministic process-level
+guard.
+
 This keeps the recursion exactly one level deep, by construction.
 
 When Claude invokes Codex as the reviewer, the guard is doubled structurally:
-the invocation also disables the starks skill itself via Codex's per-skill
-`skills.config` override, so the reviewer cannot even see starks in its skill
-list. (Codex offers no global "load no skills" switch; the remaining skills
-are inert under the review prompt's explicit no-skill constraint.)
+the wrapper also disables the starks skill via Codex's path-based per-skill
+`skills.config` override. The reviewer receives a read-only sandbox and treats
+the plan and repository as untrusted review data. It ignores user configuration
+and execpolicy rules and runs ephemerally, so unrelated plugins, hooks and stale
+configuration cannot affect the review. The wrapper deliberately does not enable
+`--strict-config` because user configuration is not loaded in the first place.
+
+The Claude direction uses safe mode, disables slash commands and tools, and
+disables session persistence. This isolates the reviewer from user/project
+hooks, plugins, skills and resumable sessions while preserving normal auth.
 
 ---
 
@@ -213,8 +224,8 @@ neutral action to its native tool.
 | Action | Claude | Codex |
 |---|---|---|
 | Spawn parallel sub-agents | `Task` | `spawn_agent` |
-| Await / release a sub-agent | returns automatically | `wait_agent` / `close_agent` |
-| Ask the user a question | `AskUserQuestion` | terminal follow-up prompt |
+| Await / release a sub-agent | returns automatically | `wait_agent` / the release mechanism exposed by the current surface |
+| Ask the user a question | `AskUserQuestion` | `request_user_input` when available, otherwise a direct follow-up |
 | Track progress | `TodoWrite` | `update_plan` |
 | Invoke the other engine (cross-review) | the Codex CLI | the Claude CLI |
 
@@ -238,7 +249,8 @@ truth and avoids drift between two platform-specific copies.
   that never relaxes with tier.
 
 - **Parallelize when you can; don't force splits.** The PM splits genuinely
-  independent work into parallel sub-agents for speed. When dependencies are
+  independent work into waves bounded by the platform's available concurrency.
+  When dependencies are
   strong and the work does not decompose cleanly, the agent does it sequentially
   and records why — forcing an artificial split only adds coordination cost.
   Sub-agent prompts are focused, self-contained, state their outputs and
@@ -246,13 +258,14 @@ truth and avoids drift between two platform-specific copies.
   agents' write-sets must be disjoint, otherwise the work is sequenced or isolated
   in worktrees.
 
-- **Configuration via environment variables.** All tunables — which model
-  sub-agents use, which model reviews on the far side, where memory is written,
+- **Configuration via environment variables.** Tunables include the requested
+  sub-agent model when the platform supports explicit selection, reviewer
+  models, review timeout, memory location,
   the cross-review recursion guard — are environment variables with sensible
   defaults or graceful skips. There is no config file to maintain and no required
   setup; an unset variable means "use the default" or "skip this feature", never
   "fail".
 
-Defaults favor your strongest available model for sub-agents, review, and the
-memory writer, since the full tier is reserved for work where quality matters more
-than cost. The lighter tiers stay deliberately cheap.
+When a sub-agent tool cannot select a model, starks inherits platform
+configuration and does not claim that `STARKS_AGENT_MODEL` was enforced. The
+lighter tiers stay deliberately cheap.

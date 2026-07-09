@@ -17,7 +17,7 @@ for dest in "$HOME/.claude/skills/starks" "$HOME/.codex/skills/starks"; do
     if [ "$cur" = "$SRC" ]; then
       echo "已是正确软链，跳过: $dest -> $cur"
     else
-      echo "警告：$dest 已是软链但指向 $cur（非 $SRC），未改动" >&2
+      echo "警告：$dest 已是软链但指向 ${cur}（非 ${SRC}），未改动" >&2
     fi
   elif [ -e "$dest" ]; then
     echo "警告：$dest 已存在且非软链，未改动" >&2

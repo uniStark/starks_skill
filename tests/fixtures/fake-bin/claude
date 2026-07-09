@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${CAPTURE_DIR:?CAPTURE_DIR is required}"
+printf '%s\n' "$@" > "$CAPTURE_DIR/args"
+printf '%s' "${STARKS_CROSS_REVIEW:-}" > "$CAPTURE_DIR/guard"
+printf '%s' "$PWD" > "$CAPTURE_DIR/cwd"
+cat > "$CAPTURE_DIR/stdin"
+if [[ -n "${FAKE_CHILD_PID_FILE:-}" ]]; then
+  if [[ -n "${FAKE_IGNORE_TERM:-}" ]]; then
+    trap '' TERM
+    (trap '' TERM; while :; do sleep 30; done) &
+  else
+    sleep 30 &
+  fi
+  printf '%s' "$!" > "$FAKE_CHILD_PID_FILE"
+  wait "$!"
+fi
+if [[ -n "${FAKE_SLEEP_SECONDS:-}" ]]; then
+  sleep "$FAKE_SLEEP_SECONDS"
+fi
+if [[ -n "${FAKE_STDOUT:-}" ]]; then
+  printf '%s' "$FAKE_STDOUT"
+fi
+exit "${FAKE_EXIT_CODE:-0}"

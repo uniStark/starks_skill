@@ -74,7 +74,7 @@ fi
 
 # 检查 2：结构 smoke —— 关键锚点存在，缺哪个记哪个。
 if [[ -f "$SKILL" ]]; then
-  anchors=("HARD-GATE" "STARKS_CROSS_REVIEW" "跨模型互审" "记忆收尾" "digraph starks" "记忆唤醒" "最多回炉 2 次" "prompts/spec-review.md" "prompts/code-review.md" "skills.config")
+  anchors=("HARD-GATE" "STARKS_CROSS_REVIEW" "跨模型互审" "记忆收尾" "digraph starks" "记忆唤醒" "最多回炉 2 次" "prompts/spec-review.md" "prompts/code-review.md" "scripts/cross-review.sh" "平台规则与用户授权" "可用并发槽位")
   for a in "${anchors[@]}"; do
     if ! grep -qF -- "$a" "$SKILL"; then
       failures+=("缺少关键锚点: $a")
@@ -89,12 +89,62 @@ for p in cross-review memory-writer spec-review code-review; do
   fi
 done
 
-# 检查 4：防 fence 残留 smoke —— 没有任何一行以四个反引号开头。
+# 检查 4：运行脚本和 Codex metadata 必须存在。
+for executable in install.sh uninstall.sh lint.sh cross-review.sh; do
+  if [[ ! -x "$SRC/scripts/$executable" ]]; then
+    failures+=("脚本不存在或不可执行: scripts/$executable")
+  fi
+done
+if [[ ! -s "$SRC/scripts/run_with_timeout.py" ]]; then
+  failures+=("缺少 watchdog runner: scripts/run_with_timeout.py")
+fi
+if [[ ! -s "$SRC/agents/openai.yaml" ]]; then
+  failures+=("缺少 Codex metadata: agents/openai.yaml")
+else
+  for field in display_name short_description default_prompt; do
+    if ! grep -qE "^[[:space:]]+${field}:" "$SRC/agents/openai.yaml"; then
+      failures+=("agents/openai.yaml 缺少字段: $field")
+    fi
+  done
+  if ! grep -qF '$starks' "$SRC/agents/openai.yaml"; then
+    failures+=("agents/openai.yaml default_prompt 未显式引用 \$starks")
+  fi
+fi
+
+# 检查 5：防 fence 残留 smoke —— 没有任何一行以四个反引号开头。
 if [[ -f "$SKILL" ]]; then
   fence_count="$(grep -c '^````' "$SKILL")"
   if [[ "$fence_count" -ne 0 ]]; then
     failures+=("发现 $fence_count 行以四个反引号开头（疑似 fence 残留）")
   fi
+fi
+
+# 检查 6：已知语义漂移不能回归。
+if grep -qF 'name="starks"' "$SKILL"; then
+  failures+=("仍在使用已废弃的 Codex skills.config name 键")
+fi
+if grep -qF '$STARKS_REVIEW_MODEL"' "$SRC/README.md"; then
+  failures+=("README.md 仍在使用未拆分的 STARKS_REVIEW_MODEL")
+fi
+
+# 检查 7：shell 语法与行为测试。
+shell_files=(
+  "$SRC/scripts/install.sh"
+  "$SRC/scripts/uninstall.sh"
+  "$SRC/scripts/lint.sh"
+  "$SRC/scripts/cross-review.sh"
+  "$SRC/tests/test.sh"
+  "$SRC/tests/fixtures/fake-bin/codex"
+  "$SRC/tests/fixtures/fake-bin/claude"
+)
+if ! "$BASH" -n "${shell_files[@]}"; then
+  failures+=("shell 语法检查失败")
+fi
+if ! python3 -m py_compile "$SRC/scripts/run_with_timeout.py"; then
+  failures+=("Python watchdog 语法检查失败")
+fi
+if ! test_output="$("$BASH" "$SRC/tests/test.sh" 2>&1)"; then
+  failures+=("行为测试失败:\n$test_output")
 fi
 
 # 汇总输出。

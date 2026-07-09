@@ -1,0 +1,4 @@
+interface:
+  display_name: "starks"
+  short_description: "Proportional task planning and execution"
+  default_prompt: "Use $starks to scope and execute this development task with proportional rigor."

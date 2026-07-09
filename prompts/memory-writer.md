@@ -6,8 +6,10 @@
 - 项目名 = repo 根目录 basename；动笔前先读 `$STARKS_MEMORY_DIR/_index.md`，有相近旧条目就沿用旧名，不另开新目录（防记忆碎片化）。
 - `summary.md` 里"是什么 / 现状"可整段更新；"做了什么"按日期保留最近 5 条简短记录，别整篇覆盖丢历史。
 - 绝不读 / 写记忆库里的 `private/` 区（即 `$STARKS_MEMORY_DIR` 同级的 `private/`）及其任何子路径。
+- 写入前解析 `$STARKS_MEMORY_DIR` 和目标目录的物理路径；若目标通过 `..`、绝对路径或软链逃逸配置根目录，立即停止并报告。
+- `{PROJECT}` 必须是已有索引名或安全的 repo basename，不得包含 `/`、`..`、控制字符。
 - 不要调用 skill、不要派子代理、不要触发 starks。
-- 本机有 hook 会拦子代理用 Write 等文件写工具写文件；**一律用 shell 写入**（如 `cat > "$f" <<'EOF' … EOF`），不要用 Write 工具。
+- 只使用当前平台和用户授权允许的文件编辑方式；不要绕过 hook、sandbox、审批或工作区边界。
 
 要写的文件（项目名 = {PROJECT}）：
 1. `$STARKS_MEMORY_DIR/{PROJECT}/summary.md`
