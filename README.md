@@ -54,7 +54,8 @@ starks reads a few optional environment variables (all have defaults or degrade 
 | Env var | What | Default |
 |---|---|---|
 | `STARKS_AGENT_MODEL` | strongest model for parallel sub-agents | your platform's strongest (e.g. Claude `opus`, Codex `gpt-5`-class) |
-| `STARKS_REVIEW_MODEL` | model used for cross-review on the OTHER engine | same |
+| `STARKS_REVIEW_MODEL_CODEX` | reviewer model when Codex reviews the plan (Claude→Codex) | unset → codex default |
+| `STARKS_REVIEW_MODEL_CLAUDE` | reviewer model when Claude reviews the plan (Codex→Claude) | unset → claude default |
 | `STARKS_MEMORY_DIR` | project-memory dir (e.g. an Obsidian vault subfolder); **unset → memory step skipped** | unset |
 | `STARKS_STYLE_NOTE` | optional note the memory writer reads first to match your style | unset |
 
