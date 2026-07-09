@@ -434,8 +434,11 @@ run_contract_checks() {
   fi
   assert_contains "$skill" "references/runtime.md" "skill routes runtime details to the runtime reference"
   assert_not_contains "$skill" "digraph starks" "skill keeps the detailed state-machine graph out of the entrypoint"
-  skill_lines="$(wc -l < "$SRC/SKILL.md" | tr -d '[:space:]')"
-  if [[ "$skill_lines" -le 105 ]]; then
+  if ! skill_lines="$(awk 'END { print NR }' "$SRC/SKILL.md" 2>/dev/null)"; then
+    fail "skill entrypoint line count is readable (awk failed)"
+  elif [[ ! "$skill_lines" =~ ^[0-9]+$ ]]; then
+    fail "skill entrypoint line count is numeric (actual=${skill_lines:-<empty>})"
+  elif [[ "$skill_lines" -le 105 ]]; then
     pass "skill entrypoint stays within 105 lines"
   else
     fail "skill entrypoint stays within 105 lines (actual=$skill_lines)"
