@@ -438,10 +438,10 @@ run_contract_checks() {
     fail "skill entrypoint line count is readable (awk failed)"
   elif [[ ! "$skill_lines" =~ ^[0-9]+$ ]]; then
     fail "skill entrypoint line count is numeric (actual=${skill_lines:-<empty>})"
-  elif [[ "$skill_lines" -le 105 ]]; then
-    pass "skill entrypoint stays within 105 lines"
+  elif [[ "$skill_lines" -ge 90 && "$skill_lines" -le 105 ]]; then
+    pass "skill entrypoint stays within 90-105 lines"
   else
-    fail "skill entrypoint stays within 105 lines (actual=$skill_lines)"
+    fail "skill entrypoint stays within 90-105 lines (actual=$skill_lines)"
   fi
   if [[ -s "$runtime" ]]; then
     runtime_text="$(cat "$runtime")"
