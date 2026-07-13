@@ -18,6 +18,8 @@ description: Use when starting real work — building a feature, adding or chang
 
 核心决策规则以本文件为准。
 
+完整档的依赖图、持续调度、进度看板与动态接单细则见 `references/pm-orchestration.md`。
+
 ## 环境守卫（最先检查）
 
 若 `STARKS_CROSS_REVIEW` 已设置，你是一次性 reviewer：
@@ -58,7 +60,7 @@ description: Use when starting real work — building a feature, adding or chang
 1. **拷问 grill** — 先记忆唤醒、读相关文件与近期 commit，再集中提问隐藏假设、边界和成功标准；只问会改变后续走向的问题。
 2. **起草方案** — 收口需求并拆解任务，不另造冗长 plan 文件。
 3. **呈现方案 + 一次定夺** — 让用户选 **A 直接开干 / B 先让另一个模型（Claude↔Codex）互审再定 / C 改方案**。仅 B 运行互审，整合修订后回到本步再次定夺；不得自动互审或闷头跳过不提。
-4. **PM 编排** — 按可用并发槽位分批派互不依赖的切片；并行子代理写集合必须互斥，冲突时顺序执行或使用隔离 worktree，禁止为并行而硬拆。
+4. **PM 编排** — 维护依赖图与 `Ready` 队列；有安全任务且可用并发槽位空闲就立即补位，不等待整波。并行写集合必须互斥，冲突时顺序执行或使用隔离 worktree；不得为追求代理数量硬拆任务。
 5. **两阶段审查** — 先按 `prompts/spec-review.md` 查 spec 合规，再按 `prompts/code-review.md` 查代码质量；不过就回炉，最多回炉 2 次，仍不过则报告卡点并让用户定夺。
 6. **完成门禁** — 当场运行能证明验收标准的完整验证，读清结果后才可作完成声明。
 7. **记忆收尾** — 仅有实质可复用进展时执行；只有平台规则与用户授权都允许才可写入，且绝不碰 `private/`。
@@ -73,8 +75,10 @@ description: Use when starting real work — building a feature, adding or chang
 
 ## PM 与审查边界
 
-- 子代理 prompt 必须 focused、self-contained，并写清拥有写权的文件、输出与验收标准；
+- 子代理 prompt 必须 focused、self-contained，并写清 focused goal、write ownership、output 与 acceptance；
 - 平台支持显式模型参数时才请求 `STARKS_AGENT_MODEL`，否则继承平台配置并如实说明；
+- 主 PM 须保持响应：存在可委派任务时不长期占用大块实现，并在 commentary 展示真实看板，不虚构百分比或 ETA；
+- 用户变更已批准的计划、架构或验收标准时，只暂停受影响切片，并重新打开 HARD-GATE；
 - 各切片完成后进入两阶段审查，整体验证门禁是唯一汇合点。
 
 ## 记忆边界

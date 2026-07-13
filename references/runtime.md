@@ -41,6 +41,8 @@ PLAN
 
 工具支持隔离 worktree 时可用于解决写集合冲突；否则顺序执行。可选 skill 或工具不可用时，如实说明限制，采用不改变核心门禁的可用替代方案；不得伪造调用或结果。
 
+完整档的依赖图、持续填槽、用户看板与动态接单协议见 `references/pm-orchestration.md`。
+
 ## 项目记忆入口
 
 项目名默认取 repo 根目录 basename；先查 `$STARKS_MEMORY_DIR/<project>/summary.md` 与 `memory.md`，没有同名目录时查 `$STARKS_MEMORY_DIR/_index.md`。写入通过当前平台规定的 memory writer 入口，内容与格式遵循 `prompts/memory-writer.md`；`STARKS_STYLE_NOTE` 已配置且可读时先读文风笔记。

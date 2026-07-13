@@ -7,6 +7,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC="$(cd "$SCRIPT_DIR/.." && pwd)"
 SKILL="$SRC/SKILL.md"
+PM_REF="$SRC/references/pm-orchestration.md"
 
 failures=()
 
@@ -74,7 +75,7 @@ fi
 
 # 检查 2：结构 smoke —— 关键锚点存在，缺哪个记哪个。
 if [[ -f "$SKILL" ]]; then
-  anchors=("HARD-GATE" "STARKS_CROSS_REVIEW" "跨模型互审" "记忆收尾" "references/runtime.md" "记忆唤醒" "最多回炉 2 次" "prompts/spec-review.md" "prompts/code-review.md" "scripts/cross-review.sh" "平台规则与用户授权" "可用并发槽位")
+  anchors=("HARD-GATE" "STARKS_CROSS_REVIEW" "跨模型互审" "记忆收尾" "references/runtime.md" "references/pm-orchestration.md" "Ready" "记忆唤醒" "最多回炉 2 次" "prompts/spec-review.md" "prompts/code-review.md" "scripts/cross-review.sh" "平台规则与用户授权" "可用并发槽位")
   for a in "${anchors[@]}"; do
     if ! grep -qF -- "$a" "$SKILL"; then
       failures+=("缺少关键锚点: $a")
@@ -84,6 +85,9 @@ fi
 
 if [[ ! -s "$SRC/references/runtime.md" ]]; then
   failures+=("缺少 runtime reference: references/runtime.md")
+fi
+if [[ ! -s "$PM_REF" ]]; then
+  failures+=("缺少 PM orchestration reference: references/pm-orchestration.md")
 fi
 
 # 检查 3：SKILL.md 引用的 prompt 模板必须存在。
