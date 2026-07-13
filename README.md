@@ -23,7 +23,7 @@ A single model has systematic blind spots — it tends to miss the same edge cas
 
 - **Task tiering** — every task is sorted into trivial / light / full before anything runs, so simple work stays fast and only real complexity triggers the full flow.
 - **Cross-model review (you choose)** — at sign-off you can send the plan to the *other* engine (Claude↔Codex) for a critical second pass. Never automatic, never silently skipped — it's offered as an option.
-- **PM-mode parallel sub-agents** — full tasks use a dependency DAG and Ready queue; independent slices fan out, while tightly-coupled work stays sequential instead of being force-split.
+- **PM-mode parallel sub-agents** — full tasks use a dependency DAG and Ready queue with work-conserving scheduling. Safe Ready work starts as soon as a slot opens; tightly-coupled work stays sequential instead of being force-split. The PM posts a truthful status board while remaining responsive.
 - **Two-stage review** — a reviewer checks spec compliance, then a reviewer checks code quality; failures loop back.
 - **Verification gate** — no "done / passing / fixed" claim without freshly-run evidence on the spot.
 - **Optional memory layer** — project memory is recalled at task start and a summary is written back when there's reusable progress (e.g. to Obsidian); skipped entirely if unconfigured.
