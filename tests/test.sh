@@ -419,8 +419,9 @@ run_nested_shell_regression() {
 }
 
 run_contract_checks() {
-  local skill readme readme_zh spec memory runtime runtime_text skill_lines
+  local skill readme readme_zh spec memory runtime runtime_text pm_ref pm_text skill_lines
   runtime="$SRC/references/runtime.md"
+  pm_ref="$SRC/references/pm-orchestration.md"
   skill="$(cat "$SRC/SKILL.md")"
   readme="$(cat "$SRC/README.md")"
   readme_zh="$(cat "$SRC/README.zh-CN.md")"
@@ -450,7 +451,26 @@ run_contract_checks() {
     assert_contains "$runtime_text" "spawn_agent" "runtime reference documents Codex subagent dispatch"
   fi
 
+  if [[ -s "$pm_ref" ]]; then
+    pass "PM orchestration reference exists and is non-empty"
+    pm_text="$(cat "$pm_ref")"
+    assert_contains "$pm_text" "Backlog" "PM orchestration reference documents Backlog"
+    assert_contains "$pm_text" "Ready" "PM orchestration reference documents Ready"
+    assert_contains "$pm_text" "Spec Review" "PM orchestration reference documents Spec Review"
+    assert_contains "$pm_text" "Code Review" "PM orchestration reference documents Code Review"
+    assert_contains "$pm_text" "Dropped" "PM orchestration reference documents Dropped"
+    assert_contains "$pm_text" "HARD-GATE" "PM orchestration reference preserves the HARD-GATE"
+    assert_contains "$pm_text" "状态/问题" "PM orchestration reference defines status and issue updates"
+    assert_contains "$pm_text" "追加且独立" "PM orchestration reference requires appended independent tasks"
+    assert_contains "$pm_text" "替换/取消" "PM orchestration reference defines replace and cancel handling"
+  else
+    fail "PM orchestration reference exists and is non-empty"
+  fi
+
   assert_contains "$skill" "scripts/cross-review.sh" "skill delegates fragile cross-review invocation to a script"
+  assert_contains "$skill" "references/pm-orchestration.md" "skill routes PM orchestration details to the PM reference"
+  assert_contains "$skill" "不等待整波" "PM orchestration does not wait for a full wave"
+  assert_contains "$skill" "保持响应" "PM orchestration remains responsive"
   assert_not_contains "$skill" 'name="starks"' "skill does not document obsolete Codex name config"
   assert_not_contains "$readme" '$STARKS_REVIEW_MODEL"' "README has no obsolete unsplit review-model variable"
   assert_not_contains "$skill" "纯查询 / 概念解释" "non-work queries are outside starks task tiers"
