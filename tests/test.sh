@@ -449,6 +449,8 @@ run_contract_checks() {
     assert_contains "$runtime_text" "STARKS_REVIEW_MODEL_CODEX" "runtime reference documents the Codex reviewer model"
     assert_contains "$runtime_text" "scripts/cross-review.sh" "runtime reference documents the cross-review wrapper"
     assert_contains "$runtime_text" "spawn_agent" "runtime reference documents Codex subagent dispatch"
+    assert_contains "$runtime_text" "不会自动读取或写入" "runtime reference disables automatic project-memory access"
+    assert_contains "$runtime_text" "读取授权与写入授权相互独立" "runtime reference separates read and write approval"
   fi
 
   if [[ -s "$pm_ref" ]]; then
@@ -484,7 +486,16 @@ run_contract_checks() {
   assert_contains "$readme" "**Truthful status board**" "English README exposes the truthful status board feature"
   assert_contains "$readme_zh" "**持续补位调度**" "Chinese README exposes the continuous scheduling feature"
   assert_contains "$readme_zh" "**真实进度看板**" "Chinese README exposes the truthful progress board feature"
-  assert_contains "$skill" "平台规则与用户授权" "native memory writes are policy and authorization gated"
+  assert_contains "$skill" "**读取前询问**" "skill requires opt-in before reading project memory"
+  assert_contains "$skill" "**写入前询问**" "skill requires separate opt-in before writing project memory"
+  assert_contains "$skill" "未获明确同意就不读任何记忆文件" "skill defaults to skipping project-memory reads"
+  assert_contains "$skill" "读取同意不等于写入同意" "skill does not reuse read approval for memory writes"
+  assert_contains "$readme" "**Read opt-in / write opt-in**" "English README exposes memory opt-in behavior"
+  assert_contains "$readme_zh" "**读取前询问 / 写入前询问**" "Chinese README exposes memory opt-in behavior"
+  assert_contains "$memory" "**写入授权**" "memory writer requires explicit write approval"
+  assert_not_contains "$skill" "动手或拷问前读" "skill no longer reads memory automatically before work"
+  assert_not_contains "$readme" "project memory is recalled at task start" "English README does not promise automatic memory recall"
+  assert_not_contains "$readme_zh" "任务开始先唤醒项目记忆" "Chinese README does not promise automatic memory recall"
   assert_contains "$skill" "可用并发槽位" "parallel fan-out respects platform capacity"
   assert_not_contains "$spec" "git diff / 测试" "spec reviewer does not classify tests as read-only"
   assert_not_contains "$memory" "一律用 shell 写入" "memory writer is not tied to one machine's write hook"

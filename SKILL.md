@@ -14,7 +14,7 @@ description: Use when starting real work — building a feature, adding or chang
 - 配置 starks；
 - 实际运行跨模型互审；
 - 映射 Claude / Codex 平台工具；
-- 执行项目记忆。
+- 询问是否读写项目记忆。
 
 核心决策规则以本文件为准。
 
@@ -34,7 +34,7 @@ description: Use when starting real work — building a feature, adding or chang
 | 档位 | 判定 | 执行 |
 |---|---|---|
 | **trivial** | 一行真实改动、显然 typo、已有明确步骤的低风险动作 | 直接做；不拷问、不互审、不写记忆。 |
-| **轻量** | 单一关注点、需求清晰、少数文件、低不确定性 | 直接做或一句确认；可跳过互审与并行；完成门禁仍适用，通过后有实质进展才更新记忆。 |
+| **轻量** | 单一关注点、需求清晰、少数文件、低不确定性 | 直接做或一句确认；可跳过互审与并行；完成门禁仍适用，记忆默认不读不写。 |
 | **完整** | 跨多文件、架构级、行为大改或明显不确定性 | 执行 HARD-GATE 与七步 Checklist。 |
 
 拿不准就往上靠一档。
@@ -42,7 +42,7 @@ description: Use when starting real work — building a feature, adding or chang
 ## 全局规则与专用 skill
 
 - **完成门禁**：任何档位都必须先取得当场验证证据；无证据不得宣称“完成 / 通过 / 修好”。
-- **记忆唤醒**：除 trivial 外，若配置了 `STARKS_MEMORY_DIR` 且存在 `<项目>/`，动手或拷问前读 `summary.md` + `memory.md`；没有同名项目就查 `_index.md`。已有答案不再问用户，旧快照中的路径与约定须现场复核。
+- **读取前询问**：除 trivial 外，仅在项目历史可能有帮助且配置了 `STARKS_MEMORY_DIR` 时询问用户是否读取；未明确同意就跳过，不得先读 `_index.md` 探路。获准后先读 `summary.md`，摘要不足才按需读 `memory.md`；没有同名项目才查 `_index.md`，旧快照须现场复核。
 - bug、测试失败、非预期行为 → `systematic-debugging`；写或改 skill → `writing-skills`；超大或高不确定设计 → 先 `brainstorming`，完成设计后再回 starks。
 
 ## <HARD-GATE>（仅完整档）
@@ -57,13 +57,13 @@ description: Use when starting real work — building a feature, adding or chang
 
 有 TodoWrite / `update_plan` 就跟踪以下七步，没有则跳过工具但不跳过步骤：
 
-1. **拷问 grill** — 先记忆唤醒、读相关文件与近期 commit，再集中提问隐藏假设、边界和成功标准；只问会改变后续走向的问题。
+1. **拷问 grill** — 先按需询问是否读取记忆；仅获准后读取，再读相关文件与近期 commit，集中提问隐藏假设、边界和成功标准。
 2. **起草方案** — 收口需求并拆解任务，不另造冗长 plan 文件。
 3. **呈现方案 + 一次定夺** — 让用户选 **A 直接开干 / B 先让另一个模型（Claude↔Codex）互审再定 / C 改方案**。仅 B 运行互审，整合修订后回到本步再次定夺；不得自动互审或闷头跳过不提。
 4. **PM 编排** — 维护依赖图与 `Ready` 队列；有安全任务且可用并发槽位空闲就立即补位，不等待整波。并行写集合必须互斥，冲突时顺序执行或使用隔离 worktree；不得为追求代理数量硬拆任务。
 5. **两阶段审查** — 先按 `prompts/spec-review.md` 查 spec 合规，再按 `prompts/code-review.md` 查代码质量；不过就回炉，最多回炉 2 次，仍不过则报告卡点并让用户定夺。
 6. **完成门禁** — 当场运行能证明验收标准的完整验证，读清结果后才可作完成声明。
-7. **记忆收尾** — 仅有实质可复用进展时执行；只有平台规则与用户授权都允许才可写入，且绝不碰 `private/`。
+7. **记忆收尾** — 有实质可复用进展时询问是否写入；仅用户对本次写入明确同意且平台规则允许才执行，绝不碰 `private/`。
 
 ## 跨模型互审
 
@@ -84,8 +84,9 @@ description: Use when starting real work — building a feature, adding or chang
 ## 记忆边界
 
 - 未配置 `STARKS_MEMORY_DIR` 就跳过项目记忆；
-- 已配置也不等于获得写入授权；
-- 仅在平台规则与用户授权允许时，通过平台规定的 memory writer 入口写入；
+- **读取前询问**：配置目录只表示功能可用，不触发自动读取；本次未获明确同意就不读任何记忆文件；
+- **写入前询问**：有可复用进展才询问，本次未获明确同意就不写；读取同意不等于写入同意；
+- 获得写入同意后，仍须平台规则允许，并通过平台规定的 memory writer 入口写入；
 - 失败要报告，绝不碰 `private/`。具体入口、路径与降级规则见 `references/runtime.md` 和 `prompts/memory-writer.md`。
 
 ## 红旗清单
@@ -96,4 +97,4 @@ description: Use when starting real work — building a feature, adding or chang
 | 自动跑互审、完全不提互审，或失败后静默略过 | 回到用户三选；失败明确报告并重新授权。 |
 | 超出可用槽位、并行写集合相撞，或伪称指定了不受支持的模型 | 缩小并行、隔离写集，并如实说明平台能力。 |
 | 没验证就说“应该没问题 / 已完成” | 回到完成门禁，取得新鲜证据。 |
-| 未经平台规则与用户授权写记忆，或触碰 `private/` | 停止写入并报告；不得绕过权限。 |
+| 未询问就读写记忆、把读取同意当写入同意，或触碰 `private/` | 停止操作并报告；不得绕过权限。 |

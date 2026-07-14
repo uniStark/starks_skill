@@ -75,7 +75,7 @@ fi
 
 # 检查 2：结构 smoke —— 关键锚点存在，缺哪个记哪个。
 if [[ -f "$SKILL" ]]; then
-  anchors=("HARD-GATE" "STARKS_CROSS_REVIEW" "跨模型互审" "记忆收尾" "references/runtime.md" "references/pm-orchestration.md" "Ready" "记忆唤醒" "最多回炉 2 次" "prompts/spec-review.md" "prompts/code-review.md" "scripts/cross-review.sh" "平台规则与用户授权" "可用并发槽位")
+  anchors=("HARD-GATE" "STARKS_CROSS_REVIEW" "跨模型互审" "记忆收尾" "references/runtime.md" "references/pm-orchestration.md" "Ready" "读取前询问" "写入前询问" "最多回炉 2 次" "prompts/spec-review.md" "prompts/code-review.md" "scripts/cross-review.sh" "平台规则" "可用并发槽位")
   for a in "${anchors[@]}"; do
     if ! grep -qF -- "$a" "$SKILL"; then
       failures+=("缺少关键锚点: $a")
