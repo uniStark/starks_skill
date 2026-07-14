@@ -27,7 +27,7 @@ A single model has systematic blind spots — it tends to miss the same edge cas
 - **Truthful status board** — the PM remains responsive, posts live progress in commentary, and accepts `QUERY`, `ADD`, `CHANGE`, `REPLACE`, and `PRIORITY` messages while work continues.
 - **Two-stage review** — a reviewer checks spec compliance, then a reviewer checks code quality; failures loop back.
 - **Verification gate** — no "done / passing / fixed" claim without freshly-run evidence on the spot.
-- **Read opt-in / write opt-in** — Obsidian memory is never read or written automatically. When history may help, starks asks before reading; after reusable progress, it asks separately before writing.
+- **Scoped shared memory** — Claude and Codex can share cross-project Obsidian facts, but nothing is searched, listed, read, or written automatically. Read access is task-scoped and budgeted; write access is separately enumerated and approved.
 - **Dual-platform** — one `SKILL.md`, symlinked into both Claude Code and Codex.
 - **Anti-recursion guard** — when invoked as a cross-reviewer, starks answers once and exits instead of re-entering its own flow.
 
@@ -59,7 +59,7 @@ starks reads a few optional environment variables (all have defaults or degrade 
 | `STARKS_REVIEW_MODEL_CODEX` | reviewer model when Codex reviews the plan (Claude→Codex) | unset → codex default |
 | `STARKS_REVIEW_MODEL_CLAUDE` | reviewer model when Claude reviews the plan (Codex→Claude) | unset → claude default |
 | `STARKS_REVIEW_TIMEOUT_SECONDS` | cross-review timeout in seconds | `600` |
-| `STARKS_MEMORY_DIR` | project-memory dir (e.g. an Obsidian vault subfolder); configuration only makes opt-in available | unset |
+| `STARKS_MEMORY_DIR` | shared project-memory root (e.g. an Obsidian vault subfolder); configuration only makes scoped opt-in available | unset |
 | `STARKS_STYLE_NOTE` | optional note the memory writer reads first to match your style | unset |
 
 Export sub-agent and memory settings into the primary agent process. Reviewer settings may also live in `.env`; `scripts/cross-review.sh` reads them automatically and already-exported values take precedence.
@@ -72,7 +72,7 @@ starks doesn't run the same heavyweight pipeline on everything. When real work s
 - **light** — a single clear concern across a few files. Do it (or confirm in one line) and skip the parallel / cross-review machinery, but the verification gate still applies.
 - **full** — multi-file, architectural, large behavior change, or genuinely uncertain. This runs the whole flow.
 
-For a full-tier task the flow is: **ask whether to recall project memory** when history may help (default: skip; after approval, read the short summary first and expand only as needed) → **grill** the requirements — multiple-choice first, batching independent questions — to surface hidden assumptions, edges, and success criteria → **draft** a plan → **present it for one decision** (a hard gate: start now / cross-review first / revise). Only if you pick cross-review does the plan go to the other model; the revised version comes back for sign-off. After approval the PM uses work-conserving scheduling: whenever a slot opens, safe Ready work from the dependency DAG starts without waiting for the whole wave, but work is never force-split merely to raise concurrency. The PM stays responsive, posts a truthful status board in commentary, and accepts new `QUERY`, `ADD`, `CHANGE`, `REPLACE`, and `PRIORITY` messages while work continues. It then runs the **two-stage review**, holds the **verification gate**, and asks separately before writing reusable progress to project memory. Read approval never implies write approval. See the [PM orchestration reference](references/pm-orchestration.md) for the detailed scheduling protocol.
+For a full-tier task the flow is: **ask whether to route shared project memory** when history may help (default: skip; the task-scoped approval names the metadata scan, files, and context budget) → **grill** the requirements — multiple-choice first, batching independent questions — to surface hidden assumptions, edges, and success criteria → **draft** a plan → **present it for one decision** (a hard gate: start now / cross-review first / revise). Only if you pick cross-review does the plan go to the other model; the revised version comes back for sign-off. After approval the PM uses work-conserving scheduling, runs the **two-stage review**, and holds the **verification gate**. At task end, reusable facts are offered as a separate, enumerated write; read approval never implies write approval. See the [PM orchestration reference](references/pm-orchestration.md) and [memory protocol](references/memory.md) for details.
 
 Cross-review uses one stable wrapper; the full plan always travels over stdin:
 

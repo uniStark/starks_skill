@@ -45,6 +45,6 @@ PLAN
 
 ## 项目记忆入口
 
-配置 `STARKS_MEMORY_DIR` 只表示记忆功能可用，不会自动读取或写入。主代理不得为了判断是否值得询问而预读 `_index.md`；只有用户对本次读取明确同意后，才以 repo 根目录 basename 作为项目名，先读 `$STARKS_MEMORY_DIR/<project>/summary.md`，摘要不足时按需读 `memory.md`，没有同名目录时才查 `_index.md`。
+配置 `STARKS_MEMORY_DIR` 只表示共享记忆功能可用，不触发任何读取、搜索、列举或写入。用户同意本任务读取后，主代理按 `prompts/memory-reader.md` 执行；预算、跨项目路由、frontmatter schema、旧文件兼容和安全边界见 `references/memory.md`。
 
-读取授权与写入授权相互独立。有实质、可复用进展时，主代理另行询问是否写入；只有用户对本次写入明确同意且平台规则允许，才通过当前平台规定的 memory writer 入口写入，内容与格式遵循 `prompts/memory-writer.md`，并在 `STARKS_STYLE_NOTE` 已配置且可读时读取文风笔记。未明确同意就跳过，失败要报告，并且绝不读取、写入或修改 `private/`。
+读取授权与写入授权相互独立。任务终局若有可复用事实，主代理按 `prompts/memory-writer.md` 枚举目标与内容并另行询问；只有用户明确同意且平台规则允许才写入。`STARKS_STYLE_NOTE` 只在本次写入获批后读取。失败要报告，不得扩大授权范围。

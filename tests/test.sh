@@ -419,9 +419,11 @@ run_nested_shell_regression() {
 }
 
 run_contract_checks() {
-  local skill readme readme_zh spec memory runtime runtime_text pm_ref pm_text skill_lines
+  local skill readme readme_zh spec memory runtime runtime_text pm_ref pm_text memory_ref memory_ref_text memory_reader_path memory_reader skill_lines
   runtime="$SRC/references/runtime.md"
   pm_ref="$SRC/references/pm-orchestration.md"
+  memory_ref="$SRC/references/memory.md"
+  memory_reader_path="$SRC/prompts/memory-reader.md"
   skill="$(cat "$SRC/SKILL.md")"
   readme="$(cat "$SRC/README.md")"
   readme_zh="$(cat "$SRC/README.zh-CN.md")"
@@ -449,8 +451,45 @@ run_contract_checks() {
     assert_contains "$runtime_text" "STARKS_REVIEW_MODEL_CODEX" "runtime reference documents the Codex reviewer model"
     assert_contains "$runtime_text" "scripts/cross-review.sh" "runtime reference documents the cross-review wrapper"
     assert_contains "$runtime_text" "spawn_agent" "runtime reference documents Codex subagent dispatch"
-    assert_contains "$runtime_text" "不会自动读取或写入" "runtime reference disables automatic project-memory access"
+    assert_contains "$runtime_text" "不触发任何读取、搜索、列举或写入" "runtime reference disables automatic project-memory access"
     assert_contains "$runtime_text" "读取授权与写入授权相互独立" "runtime reference separates read and write approval"
+  fi
+
+  if [[ -s "$memory_ref" ]]; then
+    pass "memory reference exists and is non-empty"
+    memory_ref_text="$(cat "$memory_ref")"
+    assert_contains "$memory_ref_text" "## 零访问与任务级授权" "memory reference defines zero-access authorization"
+    assert_contains "$memory_ref_text" "## 授权后的安全路由" "memory reference defines cross-project routing"
+    assert_contains "$memory_ref_text" "## 深度读取" "memory reference defines separately-approved deep reads"
+    assert_contains "$memory_ref_text" "单行内联数组" "memory reference fixes routable frontmatter arrays"
+    assert_contains "$memory_ref_text" "edge_source" "memory reference preserves reverse-edge provenance"
+    assert_contains "$memory_ref_text" "MEMORY_ZERO_ACCESS=true" "memory reference has a stable zero-access contract"
+    assert_contains "$memory_ref_text" "MEMORY_SOURCE_OF_TRUTH=OBSIDIAN_MARKDOWN" "Obsidian is the cross-model source of truth"
+    assert_contains "$memory_ref_text" "MEMORY_NATIVE_MEMORY_POLICY=POINTERS_ONLY" "native memories only retain Obsidian pointers"
+    assert_contains "$memory_ref_text" "MEMORY_INDEX_POLICY=HUMAN_ONLY" "human index is excluded from machine recall"
+    assert_contains "$memory_ref_text" "MEMORY_ROUTE_MAX_ITEMS=60" "memory routing has a project-count budget"
+    assert_contains "$memory_ref_text" "MEMORY_ROUTE_MAX_CHARS=1500" "memory routing has a metadata character budget"
+    assert_contains "$memory_ref_text" "MEMORY_SUMMARY_MAX_FILES=3" "memory summary reads have a file budget"
+    assert_contains "$memory_ref_text" "MEMORY_SUMMARY_MAX_CHARS=4000" "memory summary reads have a character budget"
+    assert_contains "$memory_ref_text" "MEMORY_SUMMARY_MAX_EST_TOKENS=2500" "memory summary reads have an estimated token budget"
+    assert_contains "$memory_ref_text" "MEMORY_TASK_MAX_FILES=5" "memory deep reads have a total file budget"
+    assert_contains "$memory_ref_text" "MEMORY_TASK_MAX_CHARS=8000" "memory deep reads have a total character budget"
+    assert_contains "$memory_ref_text" "MEMORY_FACT_SCHEMA=key,fact,status,verified_at,source,expires?" "memory facts use a stable schema"
+    assert_contains "$memory_ref_text" "MEMORY_CURRENT_OBSERVATION_WINS=true" "live observations override memory"
+    assert_contains "$memory_ref_text" "MEMORY_NEW_FILE_BASE_STATE=ABSENT" "new memory files have an explicit absent baseline"
+    assert_contains "$memory_ref_text" "MEMORY_MISSING_TARGET_VALIDATION=PARENT_REALPATH" "missing memory targets validate their existing parent"
+    assert_contains "$memory_ref_text" "MEMORY_LEGACY_UNMATCHED_ORDER=LAST" "unmatched legacy projects sort after canonical matches"
+  else
+    fail "memory reference exists and is non-empty"
+  fi
+
+  if [[ -s "$memory_reader_path" ]]; then
+    pass "memory reader prompt exists and is non-empty"
+    memory_reader="$(cat "$memory_reader_path")"
+    assert_contains "$memory_reader" "MEMORY_READ_OPT_IN" "memory reader carries the scoped read authorization key"
+    assert_contains "$memory_reader" "MEMORY_DEEP_READ_OPT_IN" "memory reader carries the deep-read authorization key"
+  else
+    fail "memory reader prompt exists and is non-empty"
   fi
 
   if [[ -s "$pm_ref" ]]; then
@@ -476,6 +515,8 @@ run_contract_checks() {
 
   assert_contains "$skill" "scripts/cross-review.sh" "skill delegates fragile cross-review invocation to a script"
   assert_contains "$skill" "references/pm-orchestration.md" "skill routes PM orchestration details to the PM reference"
+  assert_contains "$skill" "references/memory.md" "skill routes memory details to the memory reference"
+  assert_contains "$skill" "prompts/memory-reader.md" "skill routes approved reads to the memory reader"
   assert_contains "$skill" "Ready" "skill carries the stable ready-queue contract"
   assert_not_contains "$skill" 'name="starks"' "skill does not document obsolete Codex name config"
   assert_not_contains "$readme" '$STARKS_REVIEW_MODEL"' "README has no obsolete unsplit review-model variable"
@@ -488,11 +529,20 @@ run_contract_checks() {
   assert_contains "$readme_zh" "**真实进度看板**" "Chinese README exposes the truthful progress board feature"
   assert_contains "$skill" "**读取前询问**" "skill requires opt-in before reading project memory"
   assert_contains "$skill" "**写入前询问**" "skill requires separate opt-in before writing project memory"
-  assert_contains "$skill" "未获明确同意就不读任何记忆文件" "skill defaults to skipping project-memory reads"
+  assert_contains "$skill" 'Read / rg / ls / find / stat' "skill forbids every pre-authorization memory access path"
   assert_contains "$skill" "读取同意不等于写入同意" "skill does not reuse read approval for memory writes"
-  assert_contains "$readme" "**Read opt-in / write opt-in**" "English README exposes memory opt-in behavior"
-  assert_contains "$readme_zh" "**读取前询问 / 写入前询问**" "Chinese README exposes memory opt-in behavior"
-  assert_contains "$memory" "**写入授权**" "memory writer requires explicit write approval"
+  assert_contains "$skill" "当前直接观察永远优先于记忆" "skill makes live evidence override memory"
+  assert_contains "$readme" "**Scoped shared memory**" "English README exposes scoped shared memory"
+  assert_contains "$readme_zh" "**受控跨项目记忆**" "Chinese README exposes scoped shared memory"
+  assert_contains "$memory" "AUTH_MODE: MEMORY_WRITE_OPT_IN" "memory writer requires structured write authorization"
+  assert_contains "$memory" "AUTHORIZED_FILES:" "memory writer receives an authorized file list"
+  assert_contains "$memory" "AUTHORIZED_FACT_KEYS: [<获批新增或更新的 fact key>, ...] | NONE" "memory writer supports fact-key lists and summary-only writes"
+  assert_contains "$memory" "SUMMARY_CHANGES:" "memory writer receives authorized summary changes"
+  assert_contains "$memory" "CREATE_HISTORY:" "memory writer receives an authorized history decision"
+  assert_contains "$memory" "READ_STYLE_NOTE:" "memory writer discloses optional style-note reads"
+  assert_contains "$memory" "BASE_STATE=ABSENT" "memory writer handles concurrent creation of new files"
+  assert_contains "$memory" "no-clobber / exclusive-create" "memory writer never overwrites a concurrently-created file"
+  assert_not_contains "$memory" "checkpoint" "memory writer has no extra checkpoint prompt exception"
   assert_not_contains "$skill" "动手或拷问前读" "skill no longer reads memory automatically before work"
   assert_not_contains "$readme" "project memory is recalled at task start" "English README does not promise automatic memory recall"
   assert_not_contains "$readme_zh" "任务开始先唤醒项目记忆" "Chinese README does not promise automatic memory recall"
