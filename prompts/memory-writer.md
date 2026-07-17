@@ -12,8 +12,9 @@
 
 ## Canonical 存储
 
-- `{PROJECT}` 为安全的 repo 根目录 basename，不得含 `/`、`..`、控制字符或绝对路径。
-- `$STARKS_MEMORY_DIR/{PROJECT}/summary.md`：项目 metadata、关系与当前短摘要的唯一事实源。frontmatter 使用 `project`、`tags`、`related`、`depends_on`、`status`、`updated`。
+- 当前仓库身份优先使用去敏后的 Git origin：删除 scheme、userinfo、用户名、密码、token、query、fragment、默认端口和 `.git`，规范为 `<lowercase-host>/<repo-path>`。无安全 origin 时使用 `local:<safe-basename>:<repo-root-realpath 的 sha256 前 12 位>`；不得保存原始 remote URL 或绝对路径。
+- `{PROJECT}` 优先取已存在且 `repo_id` 唯一匹配项目的 `project`；否则取安全的 repo 根目录 basename，不得含 `/`、`..`、控制字符或绝对路径。多个项目声明同一 `repo_id` 时 fail-closed，不创建另一个副本。
+- `$STARKS_MEMORY_DIR/{PROJECT}/summary.md`：项目 metadata、身份、别名、关系与当前短摘要的唯一事实源。frontmatter 使用 `project`、`repo_id`、`aliases`、`tags`、`related`、`depends_on`、`status`、`updated`；四个数组字段使用单行内联数组。
 - `$STARKS_MEMORY_DIR/{PROJECT}/memory.md`：长期事实索引。同一 `key` 更新原记录，不重复追加。
 - `$STARKS_MEMORY_DIR/{PROJECT}/history/`：仅在授权时新增详细记录；文件名为 `YYYY-MM-DD-HHMMSS-四位随机后缀.md`，只新增、不覆盖或改写旧文件。
 - `$STARKS_MEMORY_DIR/_shared/`：跨项目事实的 canonical 位置；不要在各项目重复保存同一事实。

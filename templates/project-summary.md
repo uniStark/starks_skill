@@ -1,7 +1,12 @@
 ---
-title: {PROJECT} 总结
-date: {DATE}
-tags: [starks, {PROJECT}]
+project: {PROJECT}
+repo_id: {REPO_ID}
+aliases: []
+tags: []
+related: []
+depends_on: []
+status: active
+updated: {DATE}
 ---
 
 # {PROJECT}

@@ -54,19 +54,21 @@ grill → draft → present + decide ─┬─ (A) proceed ───────
                                             │
                               user sign-off (the "present + decide" gate)
                                             │
-                              PM: parallel sub-agents
+                    PM: Ready queue → 派活单 → flat sub-agents
+                                      ↓
+                                  收工小票
                                             │
                               two-stage review ── fail ─→ (back to execution)
                                             │ pass
                                   verification gate
                                             │ pass
-                                       memory (optional)
+                              enumerated memory offer (optional)
 ```
 
-1. **Grill** — Recall project memory first (when a memory dir is configured, read
-   the project's summary and memory index so previously-settled questions are not
-   re-asked; memory is a snapshot — verify referenced files and conventions still
-   hold). Then probe context (read the relevant files and recent history) and
+1. **Grill** — When project history may help and a memory dir is configured, first
+   ask for task-scoped read access and disclose the routing/context budget. A
+   refusal means zero memory access for the task. After that decision, probe the
+   current repository (read the relevant files and recent history) and
    interrogate requirements with multiple-choice prompts, batching independent
    questions and sequencing only those whose answers gate later ones. Surface
    hidden assumptions, edge cases, and success criteria. This is conversational,
@@ -86,14 +88,14 @@ grill → draft → present + decide ─┬─ (A) proceed ───────
    Execution never starts until the user picks A. Cross-review never runs unless
    the user picks B.
 
-4. **User sign-off** — Picking A at step 3 is the sign-off. This is the single
-   point past which the agent commits to building.
+4. **PM orchestration** — Picking A at step 3 is the sign-off. The PM maintains a
+   dependency DAG and continuously fills open slots from the Ready queue. It sends
+   each child a compact “派活单 + 随身小抄”, keeps the agent tree one level deep,
+   and accepts only a bounded “收工小票”. Children do not reread the session,
+   shared memory, general project docs, or commit history; they read named target files,
+   necessary direct dependencies, and mandatory scoped project rules only.
 
-5. **PM parallel sub-agents** — Acting as a project manager, the agent splits
-   independent parts of the work into parallel sub-agents and keeps key decisions
-   for itself. (See PM orchestration below.)
-
-6. **Two-stage review** — A reviewer first checks the work against the agreed spec
+5. **Two-stage review** — A reviewer first checks the work against the agreed spec
    (did it build the right thing?), then checks code quality (did it build it
    well?), each following a short prompt template with structured findings.
    Failures send the work back to execution — at most twice; if verification still
@@ -101,12 +103,13 @@ grill → draft → present + decide ─┬─ (A) proceed ───────
    of looping silently. Independent slices enter review as they finish rather than
    waiting for the slowest one.
 
-7. **Verification gate** — No "done" / "passing" / "fixed" claim is made without
+6. **Verification gate** — No "done" / "passing" / "fixed" claim is made without
    freshly produced verification evidence (test output, a run, a check). See
    Design principles.
 
-8. **Memory** — If the work made substantial, reusable progress, record a project
-   summary. Optional and skipped when not configured. (See Memory layer.)
+7. **Memory** — At task end, substantial reusable facts may be offered once as an
+   enumerated write plan. Nothing is written unless the user separately approves
+   those exact files and facts. (See Memory layer.)
 
 ---
 
@@ -184,32 +187,23 @@ hooks, plugins, skills and resumable sessions while preserving normal auth.
 
 ## Memory layer
 
-The memory layer is **optional** and exists to make lessons reusable across
-projects.
+The memory layer is **optional, scoped, and zero-access by default**.
 
-- **Recall at task start.** When configured, the project's summary and memory
-  index are read before grilling, so settled decisions and preferences are reused
-  instead of re-asked. Project naming is deterministic (repo root basename,
-  matched against the existing index) so memory does not fragment across runs.
-- **When it runs.** Only after the verification gate passes *and* the work made
-  substantial, reusable progress. Trivial changes are skipped so the knowledge
-  store does not accumulate noise. The "what happened" log keeps recent dated
-  entries instead of being overwritten wholesale; durable user preferences and
-  corrections go to the platform's native memory, while the vault keeps the
-  narrative summary (pointers, not copies).
-- **Where it writes.** A project summary is written under the directory named by
-  `STARKS_MEMORY_DIR` — for example, a subdirectory of a personal knowledge vault.
-  **If `STARKS_MEMORY_DIR` is unset, the entire memory step is skipped silently.**
-- **Cross-project linking.** Summaries link to one another with wikilinks, so a
-  related project's notes are one hop away and recurring patterns surface over
-  time.
-- **Boundaries.** The memory writer reports honestly if it fails (it never claims
-  to have written when it did not) and respects any private/excluded paths in the
-  target store.
-
-The trigger, boundaries, and "is there real progress?" judgment live in the skill;
-the concrete writing style and file conventions live in a memory-writer prompt
-template that the writing sub-agent follows.
+- Configuring `STARKS_MEMORY_DIR` only makes the feature available. Before any
+  listing, metadata scan, search, or read, the PM asks for task-scoped access and
+  discloses the file, character, and estimated-token budgets.
+- Obsidian Markdown is the shared source of truth. Platform-native memories may
+  keep pointers only; they do not copy or independently override shared facts.
+- A sanitized `repo_id` derived from Git origin identifies clones and worktrees of
+  the same repository. Raw remotes, credentials, tokens, query strings, and local
+  absolute paths never enter memory; a short realpath hash is the local fallback.
+- Only the PM may read approved shared memory. Child agents receive the few facts
+  needed for their slice in the context cheat sheet and never access the vault.
+- Writing is separately authorized. At task end the PM enumerates target files,
+  fact keys, summary changes, and history creation; silence or prior read approval
+  never authorizes a write.
+- `private/` is never read, listed, or written; path boundaries fail closed and
+  writes use conflict detection plus no-clobber creation where required.
 
 ---
 
@@ -248,15 +242,12 @@ truth and avoids drift between two platform-specific copies.
   evidence; a run, a passing test, or an observed result is. This is the one rule
   that never relaxes with tier.
 
-- **Parallelize when you can; don't force splits.** The PM splits genuinely
-  independent work into waves bounded by the platform's available concurrency.
-  When dependencies are
-  strong and the work does not decompose cleanly, the agent does it sequentially
-  and records why — forcing an artificial split only adds coordination cost.
-  Sub-agent prompts are focused, self-contained, state their outputs and
-  acceptance criteria explicitly, and declare the files each agent owns: parallel
-  agents' write-sets must be disjoint, otherwise the work is sequenced or isolated
-  in worktrees.
+- **Keep safe slots busy; don't force splits.** The PM continuously recomputes the
+  Ready/review queues and fills an open slot immediately instead of waiting for a
+  wave. Strong dependencies or overlapping write sets stay sequential unless a
+  real worktree isolates them. Every child receives a focused work order, minimal
+  context, capability boundary, write ownership, acceptance criteria, and return
+  budget. Only the PM spawns agents; children never spawn grandchildren.
 
 - **Configuration via environment variables.** Tunables include the requested
   sub-agent model when the platform supports explicit selection, reviewer

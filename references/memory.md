@@ -27,6 +27,8 @@ MEMORY_TASK_MAX_CHARS=8000
 MEMORY_TASK_MAX_EST_TOKENS=5000
 MEMORY_FACT_SCHEMA=key,fact,status,verified_at,source,expires?
 MEMORY_CURRENT_OBSERVATION_WINS=true
+MEMORY_REPO_ID_SOURCE=NORMALIZED_GIT_ORIGIN
+MEMORY_REPO_ID_FALLBACK=ROOT_REALPATH_HASH
 MEMORY_NEW_FILE_BASE_STATE=ABSENT
 MEMORY_MISSING_TARGET_VALIDATION=PARENT_REALPATH
 MEMORY_LEGACY_UNMATCHED_ORDER=LAST
@@ -53,7 +55,7 @@ STARKS_MEMORY_DIR/
 └── private/               # 永不读取、列举或写入
 ```
 
-`_index.md` 不参与机器召回，也不用于修正项目名。项目目录 basename 是定位旧项目的回退标识；canonical 项目标识和关系只来自 `summary.md` frontmatter。`_shared/` 不参与项目扫描，只保存真正共享的事实，不复制项目关系。
+`_index.md` 不参与机器召回，也不用于修正项目名。canonical 项目标识、别名和关系只来自 `summary.md` frontmatter；项目目录 basename 仅用于定位未迁移旧项目。`_shared/` 不参与项目扫描，只保存真正共享的事实，不复制项目关系。
 
 `STARKS_MEMORY_DIR` 下的 Markdown 是 Claude 与 Codex 唯一共享的长期事实源。Claude/Codex 平台原生 memory 最多保存 OB 条目指针，不复制、覆盖或独立裁决跨项目事实。
 
@@ -62,6 +64,8 @@ canonical frontmatter 只解释以下白名单字段：
 ```yaml
 ---
 project: fly-oa
+repo_id: github.com/example/fly-oa
+aliases: [fly_oa]
 tags: [auth, invoice, admin]
 related: [tuding-old, fly-dashboard]
 depends_on: [feilianyun-infra]
@@ -70,8 +74,8 @@ updated: 2026-07-15
 ---
 ```
 
-- `project` 是稳定项目名；`updated` 使用 `YYYY-MM-DD`。
-- `tags`、`related`、`depends_on` 必须是单行内联数组。多行数组、错误类型或无法可靠解析的 frontmatter 必须标为“schema 不兼容”，不得静默漏召回或猜测关系。
+- `project` 是稳定项目名；`repo_id` 是去敏后的稳定仓库身份；`updated` 使用 `YYYY-MM-DD`。旧项目可缺少 `repo_id`，但不得伪造。
+- `aliases`、`tags`、`related`、`depends_on` 必须是单行内联数组。多行数组、错误类型或无法可靠解析的 frontmatter 必须标为“schema 不兼容”，不得静默漏召回或猜测关系。
 - 白名单外字段不参与路由，也不得出现在路由输出中。
 - `related` 按无向关系去重，但保留声明来源；`depends_on` 始终有向。
 - frontmatter 是关系的唯一事实源，不通过正文 wikilink、`_index.md` 或目录邻近关系推导项目关系。
@@ -80,15 +84,16 @@ updated: 2026-07-15
 
 获得普通读取授权后，按以下顺序执行；任一边界不明确都 fail-closed，停止相关访问并向用户说明。
 
-1. 解析记忆根目录的物理路径。只访问其直接项目子目录；不跟随软链接。每个候选文件在访问前解析 realpath，结果必须仍位于物理根目录内。
-2. 永远排除 `private/`、`_shared/`、`.obsidian/`、模板目录及其子路径，也不读取 `_index.md`。
-3. 当前项目名取 repo 根目录 basename。先检查同名安全项目入口，再以稳定顺序检查其他直接子目录；最多处理 60 个项目元数据条目。达到上限必须报告还有多少条目未检查，不能把“未检查”表述成“无结果”。
-4. canonical 项目只扫描 `*/summary.md` 的 frontmatter，不读取正文。没有 frontmatter 的直接项目目录只记录目录名并标为“未迁移”；存在但 schema 不兼容的 frontmatter 只报告不兼容，不使用其中的标签或关系。
-5. 形成候选：当前项目；当前项目主动声明的 `related` / `depends_on`；其他项目指向当前项目的派生反向边；标签重叠项目；以及未迁移项目名。
-6. 当前项目声明产生“直连”；其他项目声明当前项目产生“反向”。派生反向边必须携带 `edge_source=<声明项目>`，不能伪装成当前项目自己的声明。标签候选记录重叠数量。
-7. 候选按“当前项目 > 直连 > 反向 > 标签重叠数量 > `updated` 较新”排序，再以项目名稳定排序。无日期候选排在同级有有效日期的候选之后；没有当前、关系或标签匹配的未迁移候选排在所有 canonical 匹配候选之后。
+1. 在当前 repo 内计算本次身份，不接触记忆根：优先读取 Git `origin`，把 HTTPS / SSH remote 规范成 `<lowercase-host>/<repo-path-without-.git>`。必须删除 scheme、userinfo、用户名、密码、token、query、fragment 与默认端口；原始 remote URL 不得写入记忆或注入上下文。没有可安全解析的 origin 时使用 `local:<safe-basename>:<repo-root-realpath 的 sha256 前 12 位>`，不保存原始绝对路径。
+2. 解析记忆根目录的物理路径。只访问其直接项目子目录；不跟随软链接。每个候选文件在访问前解析 realpath，结果必须仍位于物理根目录内。
+3. 永远排除 `private/`、`_shared/`、`.obsidian/`、模板目录及其子路径，也不读取 `_index.md`。
+4. 最多处理 60 个项目元数据条目：若存在与当前 repo basename 同名的安全直接子目录，先检查它，再按稳定顺序检查其余直接项目子目录。canonical 项目只扫描 `*/summary.md` frontmatter 中的 `project`、`repo_id`、`aliases`、`tags`、`related`、`depends_on`、`status`、`updated`，不读取正文。没有 frontmatter 的目录只记录目录名并标为“未迁移”；schema 不兼容只报告，不使用其路由字段。
+5. 当前项目优先匹配已检查候选中唯一且完全相同的 `repo_id`；没有匹配时，依次回退到 `project`、`aliases` 与安全目录 basename 对当前 repo basename 的精确匹配。已检查候选中多个 canonical 项目声明同一 `repo_id` 时报告冲突，不擅自选择；达到扫描上限时必须报告仍有未检查项目，不能宣称全库不存在匹配；缺少 `repo_id` 的旧项目不自动迁移。
+6. 形成候选：当前项目；当前项目主动声明的 `related` / `depends_on`；其他项目指向当前项目的派生反向边；标签重叠项目；以及未迁移项目名。
+7. 当前项目声明产生“直连”；其他项目声明当前项目产生“反向”。派生反向边必须携带 `edge_source=<声明项目>`，不能伪装成当前项目自己的声明。标签候选记录重叠数量。
+8. 候选按“当前项目 > 直连 > 反向 > 标签重叠数量 > `updated` 较新”排序，再以项目名稳定排序。无日期候选排在同级有有效日期的候选之后；没有当前、关系或标签匹配的未迁移候选排在所有 canonical 匹配候选之后。
 
-元数据路由输出最多 60 个项目条目、1500 个 Unicode 字符，只包含项目名、匹配原因、关系方向/声明来源、更新时间和迁移状态。扫描时看到的正文、未知 frontmatter 字段和文件系统细节不得带入上下文。
+元数据路由输出最多 60 个项目条目、1500 个 Unicode 字符，只包含项目名、匹配原因、关系方向/声明来源、更新时间和迁移状态。`repo_id` 只用于匹配，不进入路由输出；扫描时看到的正文、未知 frontmatter 字段、remote 与文件系统细节不得带入上下文。
 
 普通正文选择遵循以下限制：
 

@@ -419,7 +419,7 @@ run_nested_shell_regression() {
 }
 
 run_contract_checks() {
-  local skill readme readme_zh spec memory runtime runtime_text pm_ref pm_text memory_ref memory_ref_text memory_reader_path memory_reader skill_lines
+  local skill readme readme_zh design design_text spec memory runtime runtime_text pm_ref pm_text memory_ref memory_ref_text memory_reader_path memory_reader skill_lines project_summary obsidian_readme
   runtime="$SRC/references/runtime.md"
   pm_ref="$SRC/references/pm-orchestration.md"
   memory_ref="$SRC/references/memory.md"
@@ -427,8 +427,12 @@ run_contract_checks() {
   skill="$(cat "$SRC/SKILL.md")"
   readme="$(cat "$SRC/README.md")"
   readme_zh="$(cat "$SRC/README.zh-CN.md")"
+  design="$(cat "$SRC/docs/DESIGN.md")"
+  design_text="$design"
   spec="$(cat "$SRC/prompts/spec-review.md")"
   memory="$(cat "$SRC/prompts/memory-writer.md")"
+  project_summary="$(cat "$SRC/templates/project-summary.md")"
+  obsidian_readme="$(cat "$SRC/templates/obsidian-README.md")"
 
   if [[ -s "$runtime" ]]; then
     pass "runtime reference exists and is non-empty"
@@ -476,6 +480,11 @@ run_contract_checks() {
     assert_contains "$memory_ref_text" "MEMORY_TASK_MAX_CHARS=8000" "memory deep reads have a total character budget"
     assert_contains "$memory_ref_text" "MEMORY_FACT_SCHEMA=key,fact,status,verified_at,source,expires?" "memory facts use a stable schema"
     assert_contains "$memory_ref_text" "MEMORY_CURRENT_OBSERVATION_WINS=true" "live observations override memory"
+    assert_contains "$memory_ref_text" "MEMORY_REPO_ID_SOURCE=NORMALIZED_GIT_ORIGIN" "memory identity prefers a sanitized Git origin"
+    assert_contains "$memory_ref_text" "MEMORY_REPO_ID_FALLBACK=ROOT_REALPATH_HASH" "memory identity has a non-path local fallback"
+    assert_contains "$memory_ref_text" 'repo_id: github.com/example/fly-oa' "memory frontmatter carries a stable repo identity"
+    assert_contains "$memory_ref_text" "原始 remote URL 不得写入记忆或注入上下文" "memory identity strips remote secrets and raw URLs"
+    assert_contains "$memory_ref_text" '`repo_id` 只用于匹配，不进入路由输出' "repo identity does not consume routed context"
     assert_contains "$memory_ref_text" "MEMORY_NEW_FILE_BASE_STATE=ABSENT" "new memory files have an explicit absent baseline"
     assert_contains "$memory_ref_text" "MEMORY_MISSING_TARGET_VALIDATION=PARENT_REALPATH" "missing memory targets validate their existing parent"
     assert_contains "$memory_ref_text" "MEMORY_LEGACY_UNMATCHED_ORDER=LAST" "unmatched legacy projects sort after canonical matches"
@@ -488,6 +497,8 @@ run_contract_checks() {
     memory_reader="$(cat "$memory_reader_path")"
     assert_contains "$memory_reader" "MEMORY_READ_OPT_IN" "memory reader carries the scoped read authorization key"
     assert_contains "$memory_reader" "MEMORY_DEEP_READ_OPT_IN" "memory reader carries the deep-read authorization key"
+    assert_contains "$memory_reader" '唯一完全匹配的 `repo_id`' "memory reader resolves current project by stable repo identity"
+    assert_contains "$memory_reader" "不得输出原始 remote" "memory reader never returns the raw remote URL"
   else
     fail "memory reader prompt exists and is non-empty"
   fi
@@ -500,6 +511,14 @@ run_contract_checks() {
     assert_contains "$pm_text" "Spec Review" "PM orchestration reference documents Spec Review"
     assert_contains "$pm_text" "Code Review" "PM orchestration reference documents Code Review"
     assert_contains "$pm_text" "Dropped" "PM orchestration reference documents Dropped"
+    assert_contains "$pm_text" "Needs Input" "PM orchestration reference distinguishes user input from blocking"
+    assert_contains "$pm_text" "Failed" "PM orchestration reference distinguishes execution failure"
+    assert_contains "$pm_text" "## 派活单与状态" "PM orchestration uses the compact work-order contract"
+    assert_contains "$pm_text" "随身小抄" "PM supplies a minimal context cheat sheet"
+    assert_contains "$pm_text" "## 收工小票" "PM orchestration defines a bounded completion receipt"
+    assert_contains "$pm_text" "代理树最大深度为一" "only the main PM can spawn agents"
+    assert_contains "$pm_text" "默认 2000 个 Unicode 字符" "subagent returns have a default context budget"
+    assert_contains "$pm_text" "最多向原代理追补一次" "invalid completion receipts have a bounded retry"
     assert_contains "$pm_text" "HARD-GATE" "PM orchestration reference preserves the HARD-GATE"
     assert_contains "$pm_text" "## 工作保持型调度" "PM orchestration reference defines work-conserving scheduling"
     assert_contains "$pm_text" "## 主 PM 与看板" "PM orchestration reference defines the PM board"
@@ -547,6 +566,17 @@ run_contract_checks() {
   assert_not_contains "$readme" "project memory is recalled at task start" "English README does not promise automatic memory recall"
   assert_not_contains "$readme_zh" "任务开始先唤醒项目记忆" "Chinese README does not promise automatic memory recall"
   assert_contains "$skill" "可用并发槽位" "parallel fan-out respects platform capacity"
+  assert_contains "$skill" "派活单 + 随身小抄" "skill gives subagents a minimal PM-owned context pack"
+  assert_contains "$skill" "收工小票" "skill requires a structured subagent return"
+  assert_contains "$skill" "不得再派生代理" "skill keeps the agent tree flat"
+  assert_contains "$runtime_text" "不传完整 session" "runtime mapping preserves one-way PM context supply"
+  assert_contains "$memory" '多个项目声明同一 `repo_id` 时 fail-closed' "memory writer refuses duplicate repository identities"
+  assert_contains "$project_summary" "repo_id: {REPO_ID}" "project summary template includes stable repo identity"
+  assert_contains "$project_summary" "aliases: []" "project summary template supports repository aliases"
+  assert_not_contains "$obsidian_readme" "自动沉淀" "Obsidian template does not promise automatic writes"
+  assert_contains "$design_text" "派活单 + 随身小抄" "design document matches the lean subagent contract"
+  assert_not_contains "$design_text" "Recall project memory first" "design document no longer promises automatic memory reads"
+  assert_not_contains "$design_text" "independent work into waves" "design document no longer describes wave scheduling"
   assert_not_contains "$spec" "git diff / 测试" "spec reviewer does not classify tests as read-only"
   assert_not_contains "$memory" "一律用 shell 写入" "memory writer is not tied to one machine's write hook"
   assert_not_contains "$skill" "绕开拦 Write 的 hook" "skill does not instruct agents to bypass local hooks"

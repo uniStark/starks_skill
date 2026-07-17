@@ -35,11 +35,12 @@ PLAN
 |---|---|---|
 | 派子代理 | `Task` / `Agent` | `spawn_agent` |
 | 等结果 | 工具自动返回或平台 wait | `wait_agent` / 平台释放机制 |
+| 追补收工小票 | 平台 resume / follow-up（可用时） | `followup_task` / 平台同类机制（可用时） |
 | 进度 | `TodoWrite` | `update_plan` |
 | 提问 | `AskUserQuestion` | `request_user_input`（可用时）或直接追问 |
 | 跨模型互审 | `scripts/cross-review.sh codex [repo-dir]` | `scripts/cross-review.sh claude [repo-dir]` |
 
-工具支持隔离 worktree 时可用于解决写集合冲突；否则顺序执行。可选 skill 或工具不可用时，如实说明限制，采用不改变核心门禁的可用替代方案；不得伪造调用或结果。
+派发时只传 `references/pm-orchestration.md` 定义的“派活单 + 随身小抄”，不传完整 session。平台显式支持能力限制、隔离 worktree 或 follow-up 时才使用对应参数；否则把能力边界写入派活单、写冲突改为串行，并如实说明没有建立原生沙箱或隔离。可选 skill 或工具不可用时，采用不改变核心门禁的可用替代方案；不得伪造调用或结果。
 
 完整档的依赖图、持续填槽、用户看板与动态接单协议见 `references/pm-orchestration.md`。
 

@@ -1,7 +1,7 @@
 <h1 align="center">starks</h1>
 
 <p align="center">
-  A task-launcher skill for Claude Code &amp; Codex — grill the requirements, optionally cross-review the plan across models, then run it with PM-mode parallel sub-agents.
+  Turn a rough request into verified delivery — adaptive task tiers, optional Claude↔Codex plan review, lean PM-mode sub-agents, and evidence before “done.”
 </p>
 
 <p align="center">
@@ -17,19 +17,50 @@
 
 ## Why starks?
 
-A single model has systematic blind spots — it tends to miss the same edge cases it didn't think to ask about. But simple work shouldn't pay for heavy process either, so starks tiers every task and keeps trivial jobs fast. At the one decision point that matters, handing the plan to *the other* model for a second opinion (Claude↔Codex) catches gaps before any code is written.
+Most agent workflows are either too casual for a large change or too ceremonial for a small one. starks adapts: tiny edits stay tiny, while complex work gets requirement grilling, an explicit plan gate, PM orchestration, two-stage review, and fresh verification.
 
-## Features
+Its distinctive move is at the plan boundary: **you** decide whether Claude and Codex should challenge each other's thinking before implementation. During execution, a responsive PM keeps child agents focused with small, one-way context packs instead of making every agent reread the entire project history.
 
-- **Task tiering** — every task is sorted into trivial / light / full before anything runs, so simple work stays fast and only real complexity triggers the full flow.
-- **Cross-model review (you choose)** — at sign-off you can send the plan to the *other* engine (Claude↔Codex) for a critical second pass. Never automatic, never silently skipped — it's offered as an option.
-- **Work-conserving scheduling** — full tasks use a dependency DAG and Ready queue. Safe Ready work fills each open slot immediately; tightly-coupled work stays sequential instead of being force-split.
-- **Truthful status board** — the PM remains responsive, posts live progress in commentary, and accepts `QUERY`, `ADD`, `CHANGE`, `REPLACE`, and `PRIORITY` messages while work continues.
-- **Two-stage review** — a reviewer checks spec compliance, then a reviewer checks code quality; failures loop back.
-- **Verification gate** — no "done / passing / fixed" claim without freshly-run evidence on the spot.
-- **Scoped shared memory** — Claude and Codex can share cross-project Obsidian facts, but nothing is searched, listed, read, or written automatically. Read access is task-scoped and budgeted; write access is separately enumerated and approved.
-- **Dual-platform** — one `SKILL.md`, symlinked into both Claude Code and Codex.
-- **Anti-recursion guard** — when invoked as a cross-reviewer, starks answers once and exits instead of re-entering its own flow.
+## Signature features
+
+- **Task tiering** — trivial / light / full modes scale the process to the risk. Simple work stays fast; only genuine complexity pays for the full workflow.
+- **Cross-model review (you choose)** — at the hard plan gate, choose **start now / ask the other model / revise**. Claude↔Codex review is never automatic and never silently skipped.
+- **Work-conserving scheduling** — a dependency DAG and Ready queue fill open slots as soon as safe work appears. Strongly coupled slices stay sequential instead of being split for vanity parallelism.
+- **Lean sub-agents** — the PM sends each flat child a compact **“派活单 + 随身小抄”** (work order + context cheat sheet). Children do not reload the session, shared memory, general project docs, or recent commits; they return one bounded **“收工小票”** (completion receipt).
+- **Truthful status board** — the PM stays responsive, shows real state rather than invented percentages or ETAs, and keeps accepting `QUERY`, `ADD`, `CHANGE`, `REPLACE`, and `PRIORITY` while execution continues.
+- **Two-stage review** — spec compliance comes first, code quality second. Failed slices go back for bounded rework instead of disappearing into a vague “done.”
+- **Verification gate** — no “done / passing / fixed” claim without freshly-run evidence that matches the acceptance criteria.
+- **Scoped shared memory** — Claude and Codex can share cross-project Obsidian facts without auto-loading a vault. Reads are opt-in, scoped, and budgeted; writes need separate, enumerated approval; routing prefers a sanitized stable `repo_id`.
+- **Dual-platform, recursion-safe** — one `SKILL.md` serves Claude Code and Codex. A cross-reviewer answers once and exits instead of invoking starks again.
+
+## The signature PM loop
+
+```text
+request
+  └─ task tier → requirement grill → plan
+                                  └─ you choose: start / cross-review / revise
+                                                   │
+PM: dependency DAG + Ready queue                    │ optional Claude↔Codex pass
+  ├─ 派活单 + 随身小抄 → flat child A ─┐            │
+  ├─ 派活单 + 随身小抄 → flat child B ─┼─→ 收工小票 ─┘
+  └─ keep the board live + accept new user input ──→ spec review → code review → verification
+```
+
+The PM is the only context-convergence point. A child gets its goal, allowed files, direct dependencies, constraints, acceptance criteria, and expected evidence—not the full conversation. It may inspect named targets, required direct dependencies, and mandatory project rules; if something is missing, it reports **缺料** rather than expanding scope on its own. Only the PM may spawn children, so the agent tree stays one level deep and predictable.
+
+Every child closes with a compact receipt:
+
+```text
+【收工小票】
+- 收工状态：已交卷 / 缺料 / 等老板拍板 / 翻车
+- 动了什么：...
+- 验收证据：...
+- 留下的雷：...
+- 产物位置：...
+- 建议下一棒：...
+```
+
+That receipt feeds the live board and review queue without dumping raw logs, long diffs, or duplicate project context back into the PM.
 
 ## Requirements
 
@@ -72,7 +103,7 @@ starks doesn't run the same heavyweight pipeline on everything. When real work s
 - **light** — a single clear concern across a few files. Do it (or confirm in one line) and skip the parallel / cross-review machinery, but the verification gate still applies.
 - **full** — multi-file, architectural, large behavior change, or genuinely uncertain. This runs the whole flow.
 
-For a full-tier task the flow is: **ask whether to route shared project memory** when history may help (default: skip; the task-scoped approval names the metadata scan, files, and context budget) → **grill** the requirements — multiple-choice first, batching independent questions — to surface hidden assumptions, edges, and success criteria → **draft** a plan → **present it for one decision** (a hard gate: start now / cross-review first / revise). Only if you pick cross-review does the plan go to the other model; the revised version comes back for sign-off. After approval the PM uses work-conserving scheduling, runs the **two-stage review**, and holds the **verification gate**. At task end, reusable facts are offered as a separate, enumerated write; read approval never implies write approval. See the [PM orchestration reference](references/pm-orchestration.md) and [memory protocol](references/memory.md) for details.
+For a full-tier task the flow is: **ask whether to route shared project memory** when history may help (default: skip; the task-scoped approval names the metadata scan, files, and context budget) → **grill** the requirements — multiple-choice first, batching independent questions — to surface hidden assumptions, edges, and success criteria → **draft** a plan → **present it for one decision** (a hard gate: start now / cross-review first / revise). Only if you pick cross-review does the plan go to the other model; the revised version comes back for sign-off. After approval the PM uses work-conserving scheduling, gives each flat child agent a minimal work order/context pack, accepts only a bounded completion receipt, runs the **two-stage review**, and holds the **verification gate**. At task end, reusable facts are offered as a separate, enumerated write; read approval never implies write approval. See the [PM orchestration reference](references/pm-orchestration.md) and [memory protocol](references/memory.md) for details.
 
 Cross-review uses one stable wrapper; the full plan always travels over stdin:
 
