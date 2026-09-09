@@ -91,20 +91,21 @@ run_install_case() {
   local foreign_target="$2"
   local home="$TMP_ROOT/install-$case_name-home"
   local output rc target
-  mkdir -p "$home/.claude/skills" "$home/.codex/skills"
+  mkdir -p "$home/.claude/skills" "$home/.agents/skills"
   ln -s "$foreign_target" "$home/.claude/skills/starks"
 
-  if output="$(HOME="$home" "$BASH" "$SRC/scripts/install.sh" 2>&1)"; then
+  if output="$(env -u CODEX_HOME HOME="$home" "$BASH" "$SRC/scripts/install.sh" 2>&1)"; then
     rc=0
   else
     rc=$?
   fi
 
-  assert_eq "0" "$rc" "install preserves $case_name symlink without crashing"
+  assert_eq "1" "$rc" "install reports failed verification for $case_name symlink"
   assert_not_contains "$output" "unbound variable" "install $case_name path has no nounset failure"
+  assert_contains "$output" "FAIL:" "install prints verification failure for $case_name symlink"
   target="$(readlink "$home/.claude/skills/starks")"
   assert_eq "$foreign_target" "$target" "install does not replace $case_name symlink"
-  if [[ -L "$home/.codex/skills/starks" ]]; then
+  if [[ -L "$home/.agents/skills/starks" ]]; then
     pass "install continues after $case_name symlink"
   else
     fail "install continues after $case_name symlink"
@@ -113,9 +114,89 @@ run_install_case() {
 
 run_install_regression() {
   local existing_target="$TMP_ROOT/existing-foreign-target"
+  local default_home="$TMP_ROOT/install-default-home"
+  local custom_home="$TMP_ROOT/install-custom-home"
+  local custom_codex_home="$TMP_ROOT/custom-codex-home"
+  local output rc
   mkdir -p "$existing_target"
   run_install_case "foreign" "$existing_target"
   run_install_case "broken" "$TMP_ROOT/missing-foreign-target"
+
+  mkdir -p "$default_home/.codex/skills"
+  ln -s "$SRC" "$default_home/.codex/skills/starks"
+  if output="$(env -u CODEX_HOME HOME="$default_home" "$BASH" "$SRC/scripts/install.sh" 2>&1)"; then
+    rc=0
+  else
+    rc=$?
+  fi
+  assert_eq "0" "$rc" "default install verifies successfully"
+  if [[ -L "$default_home/.agents/skills/starks" ]]; then
+    pass "default Codex install uses the cross-client skill root"
+  else
+    fail "default Codex install uses the cross-client skill root"
+  fi
+  if [[ ! -e "$default_home/.codex/skills/starks" && ! -L "$default_home/.codex/skills/starks" ]]; then
+    pass "default install removes its verified legacy Codex symlink"
+  else
+    fail "default install removes its verified legacy Codex symlink"
+  fi
+
+  mkdir -p "$custom_home/.agents/skills" "$custom_home/.codex/skills"
+  ln -s "$SRC" "$custom_home/.agents/skills/starks"
+  ln -s "$existing_target" "$custom_home/.codex/skills/starks"
+  if output="$(HOME="$custom_home" CODEX_HOME="$custom_codex_home" "$BASH" "$SRC/scripts/install.sh" 2>&1)"; then
+    rc=0
+  else
+    rc=$?
+  fi
+  assert_eq "0" "$rc" "custom CODEX_HOME install verifies successfully"
+  if [[ -L "$custom_codex_home/skills/starks" ]]; then
+    pass "installer respects custom CODEX_HOME"
+  else
+    fail "installer respects custom CODEX_HOME"
+  fi
+  if [[ ! -e "$custom_home/.agents/skills/starks" && ! -L "$custom_home/.agents/skills/starks" ]]; then
+    pass "custom CODEX_HOME install removes its inactive verified link"
+  else
+    fail "custom CODEX_HOME install removes its inactive verified link"
+  fi
+  if [[ "$(readlink "$custom_home/.codex/skills/starks" 2>/dev/null)" == "$existing_target" ]]; then
+    pass "installer preserves an inactive Codex link that points elsewhere"
+  else
+    fail "installer preserves an inactive Codex link that points elsewhere"
+  fi
+}
+
+run_uninstall_regression() {
+  local home="$TMP_ROOT/uninstall-home"
+  local codex_home="$TMP_ROOT/uninstall-codex-home"
+  local foreign_target="$TMP_ROOT/uninstall-foreign-target"
+  local dest rc
+  mkdir -p "$home/.claude/skills" "$home/.agents/skills" "$home/.codex/skills" \
+    "$codex_home/skills" "$foreign_target"
+  ln -s "$SRC" "$home/.claude/skills/starks"
+  ln -s "$SRC" "$home/.agents/skills/starks"
+  ln -s "$foreign_target" "$home/.codex/skills/starks"
+  ln -s "$SRC" "$codex_home/skills/starks"
+
+  if HOME="$home" CODEX_HOME="$codex_home" "$BASH" "$SRC/scripts/uninstall.sh" >/dev/null 2>&1; then
+    rc=0
+  else
+    rc=$?
+  fi
+  assert_eq "0" "$rc" "uninstall handles custom and recognized Codex roots"
+  for dest in "$home/.claude/skills/starks" "$home/.agents/skills/starks" "$codex_home/skills/starks"; do
+    if [[ ! -e "$dest" && ! -L "$dest" ]]; then
+      pass "uninstall removes verified project link: $dest"
+    else
+      fail "uninstall removes verified project link: $dest"
+    fi
+  done
+  if [[ "$(readlink "$home/.codex/skills/starks" 2>/dev/null)" == "$foreign_target" ]]; then
+    pass "uninstall preserves a Codex link that points elsewhere"
+  else
+    fail "uninstall preserves a Codex link that points elsewhere"
+  fi
 }
 
 run_cross_review_codex() {
@@ -144,24 +225,43 @@ run_cross_review_codex() {
   assert_eq "0" "$rc" "codex wrapper exits successfully with fake CLI"
   assert_file_line "$capture/args" "--sandbox" "codex reviewer sets sandbox flag"
   assert_file_line "$capture/args" "read-only" "codex reviewer is read-only"
+  assert_file_line "$capture/args" "--disable" "codex reviewer disables a feature"
+  assert_file_line "$capture/args" "shell_tool" "codex reviewer disables shell tools"
   assert_file_not_line "$capture/args" "--strict-config" "codex reviewer tolerates unrelated legacy user config"
   assert_file_line "$capture/args" "--ignore-user-config" "codex reviewer isolates user config and hooks"
   assert_file_line "$capture/args" "--ignore-rules" "codex reviewer ignores user and project execpolicy"
   assert_file_line "$capture/args" "--ephemeral" "codex reviewer does not persist a session"
+  assert_file_line "$capture/args" "--skip-git-repo-check" "codex reviewer uses an isolated non-repository workspace"
+  assert_file_line "$capture/args" 'shell_environment_policy.inherit="none"' "codex reviewer strips child-process environment"
+  assert_file_line "$capture/args" "agents.enabled=false" "codex reviewer disables sub-agents"
+  assert_file_line "$capture/args" "apps._default.enabled=false" "codex reviewer disables apps"
+  assert_file_line "$capture/args" "tools.web_search=false" "codex reviewer disables web search"
+  assert_file_line "$capture/args" "tools.view_image=false" "codex reviewer disables image tools"
   assert_file_not_line "$capture/args" "-m" "codex omits model flag when unset"
   if grep -Fq 'skills.config=[{path=' "$capture/args" 2>/dev/null; then
     pass "codex disables starks by path"
   else
     fail "codex disables starks by path"
   fi
+  if grep -Fq "$SRC/SKILL.md" "$capture/args" 2>/dev/null; then
+    pass "codex disables the current CLI's SKILL.md entrypoint form"
+  else
+    fail "codex disables the current CLI's SKILL.md entrypoint form"
+  fi
   if grep -Fq 'name="starks"' "$capture/args" 2>/dev/null; then
     fail "codex config does not use obsolete name key"
   else
     pass "codex config does not use obsolete name key"
   fi
-  assert_eq "$plan" "$(cat "$capture/stdin" 2>/dev/null)" "codex receives the complete plan on stdin"
+  assert_contains "$(cat "$capture/stdin" 2>/dev/null)" "--- BEGIN UNTRUSTED PLAN DATA ---" "codex stdin separates instructions from untrusted plan data"
+  assert_contains "$(cat "$capture/stdin" 2>/dev/null)" "$plan" "codex receives the complete plan on stdin"
+  assert_file_line "$capture/args" "-" "codex explicitly reads its request from stdin"
   assert_eq "1" "$(cat "$capture/guard" 2>/dev/null)" "codex receives recursion guard"
-  assert_eq "$SRC" "$(cat "$capture/cwd" 2>/dev/null)" "codex reviewer runs in target repo"
+  if [[ "$(cat "$capture/cwd" 2>/dev/null)" == "$SRC" ]]; then
+    fail "codex reviewer is isolated from the target repo"
+  else
+    pass "codex reviewer is isolated from the target repo"
+  fi
 
   capture="$TMP_ROOT/codex-model-capture"
   mkdir -p "$capture"
@@ -207,9 +307,14 @@ run_cross_review_claude() {
   assert_file_not_line "$capture/args" "--permission-mode" "claude reviewer avoids plan-mode tool execution"
   assert_file_line "$capture/args" "--no-session-persistence" "claude reviewer leaves no resumable session"
   assert_file_not_line "$capture/args" "--model" "claude omits model flag when unset"
-  assert_eq "$plan" "$(cat "$capture/stdin" 2>/dev/null)" "claude receives the complete plan on stdin"
+  assert_contains "$(cat "$capture/stdin" 2>/dev/null)" "--- BEGIN UNTRUSTED PLAN DATA ---" "claude stdin separates instructions from untrusted plan data"
+  assert_contains "$(cat "$capture/stdin" 2>/dev/null)" "$plan" "claude receives the complete plan on stdin"
   assert_eq "1" "$(cat "$capture/guard" 2>/dev/null)" "claude receives recursion guard"
-  assert_eq "$SRC" "$(cat "$capture/cwd" 2>/dev/null)" "claude reviewer runs in target repo"
+  if [[ "$(cat "$capture/cwd" 2>/dev/null)" == "$SRC" ]]; then
+    fail "claude reviewer is isolated from the target repo"
+  else
+    pass "claude reviewer is isolated from the target repo"
+  fi
 
   capture="$TMP_ROOT/claude-model-capture"
   mkdir -p "$capture"
@@ -292,23 +397,26 @@ run_cross_review_failures() {
 
 run_cross_review_path_and_timeout() {
   local foreign_home="$TMP_ROOT/foreign-home"
+  local foreign_codex_home="$TMP_ROOT/foreign-codex-home"
   local foreign_skill="$TMP_ROOT/foreign-starks"
   local capture="$TMP_ROOT/foreign-capture"
   local timeout_capture="$TMP_ROOT/timeout-capture"
   local foreign_physical rc started elapsed
-  mkdir -p "$foreign_home/.codex/skills" "$foreign_skill" "$capture" "$timeout_capture"
+  mkdir -p "$foreign_home/.codex/skills" "$foreign_codex_home/skills" "$foreign_skill" "$capture" "$timeout_capture"
   printf '%s\n' '---' 'name: starks' 'description: foreign fixture' '---' > "$foreign_skill/SKILL.md"
   ln -s "$foreign_skill" "$foreign_home/.codex/skills/starks"
+  ln -s "$foreign_skill" "$foreign_codex_home/skills/starks"
   foreign_physical="$(cd "$foreign_skill" && pwd -P)"
 
-  printf 'plan' | env PATH="$FAKE_BIN:$PATH" HOME="$foreign_home" CAPTURE_DIR="$capture" \
+  printf 'plan' | env PATH="$FAKE_BIN:$PATH" HOME="$foreign_home" CODEX_HOME="$foreign_codex_home" CAPTURE_DIR="$capture" \
     STARKS_REVIEW_MODEL_CODEX= STARKS_REVIEW_MODEL_CLAUDE= STARKS_REVIEW_TIMEOUT_SECONDS=600 \
     "$BASH" "$SRC/scripts/cross-review.sh" codex "$SRC" >/dev/null 2>&1
-  if grep -Fq "$foreign_home/.codex/skills/starks" "$capture/args" && \
-    grep -Fq "$foreign_physical" "$capture/args" && grep -Fq "$SRC" "$capture/args"; then
-    pass "codex disables source, installed, and physical starks paths"
+  if grep -Fq "$foreign_home/.codex/skills/starks/SKILL.md" "$capture/args" && \
+    grep -Fq "$foreign_codex_home/skills/starks/SKILL.md" "$capture/args" && \
+    grep -Fq "$foreign_physical/SKILL.md" "$capture/args" && grep -Fq "$SRC/SKILL.md" "$capture/args"; then
+    pass "codex disables source, custom, legacy, and physical SKILL.md paths"
   else
-    fail "codex disables source, installed, and physical starks paths"
+    fail "codex disables source, custom, legacy, and physical SKILL.md paths"
   fi
 
   started="$(date +%s)"
@@ -419,175 +527,43 @@ run_nested_shell_regression() {
 }
 
 run_contract_checks() {
-  local skill readme readme_zh design design_text spec memory runtime runtime_text pm_ref pm_text memory_ref memory_ref_text memory_reader_path memory_reader skill_lines project_summary obsidian_readme
-  runtime="$SRC/references/runtime.md"
-  pm_ref="$SRC/references/pm-orchestration.md"
-  memory_ref="$SRC/references/memory.md"
-  memory_reader_path="$SRC/prompts/memory-reader.md"
+  local skill readme readme_zh runtime pm_ref design review_prompt skill_lines
   skill="$(cat "$SRC/SKILL.md")"
   readme="$(cat "$SRC/README.md")"
   readme_zh="$(cat "$SRC/README.zh-CN.md")"
+  runtime="$SRC/references/runtime.md"
+  pm_ref="$SRC/references/pm-orchestration.md"
   design="$(cat "$SRC/docs/DESIGN.md")"
-  design_text="$design"
-  spec="$(cat "$SRC/prompts/spec-review.md")"
-  memory="$(cat "$SRC/prompts/memory-writer.md")"
-  project_summary="$(cat "$SRC/templates/project-summary.md")"
-  obsidian_readme="$(cat "$SRC/templates/obsidian-README.md")"
+  review_prompt="$(cat "$SRC/prompts/cross-review.md")"
 
-  if [[ -s "$runtime" ]]; then
-    pass "runtime reference exists and is non-empty"
+  [[ -s "$runtime" ]] && pass "runtime reference exists" || fail "runtime reference exists"
+  [[ -s "$pm_ref" ]] && pass "PM reference exists" || fail "PM reference exists"
+  assert_contains "$skill" "HARD-GATE" "skill defines HARD-GATE"
+  assert_contains "$skill" "references/runtime.md" "skill routes runtime details"
+  assert_contains "$skill" "references/pm-orchestration.md" "skill routes PM details"
+  assert_contains "$skill" "平台全局默认" "skill documents global model defaults"
+  assert_contains "$skill" "思考深度" "skill documents thinking-depth decisions"
+  runtime_text="$(cat "$runtime")"
+  assert_contains "$runtime_text" "默认继承平台全局默认模型与思考深度" "runtime uses platform defaults"
+  assert_contains "$runtime_text" "自行选择子代理的模型与思考深度" "runtime permits PM model decisions"
+  assert_contains "$skill" "不触发外部知识库" "skill disables external memory"
+  assert_not_contains "$skill$readme$readme_zh$runtime$design" "luna_worker" "no Luna worker references"
+  assert_not_contains "$skill$readme$readme_zh$runtime$design" "Obsidian" "no Obsidian references"
+  assert_not_contains "$skill$readme$readme_zh$runtime$design" "STARKS_MEMORY" "no memory environment variables"
+  assert_not_contains "$skill$readme$readme_zh$runtime$design" "memory-reader" "no memory reader references"
+  assert_not_contains "$skill$readme$readme_zh$runtime$design" "memory-writer" "no memory writer references"
+  assert_contains "$review_prompt" "不要访问仓库或环境" "cross-review prompt is isolated"
+  if ! skill_lines="$(awk 'END { print NR }' "$SRC/SKILL.md")"; then
+    fail "skill line count readable"
+  elif [[ "$skill_lines" -le 85 ]]; then
+    pass "skill entrypoint is concise"
   else
-    fail "runtime reference exists and is non-empty"
-  fi
-  assert_contains "$skill" "references/runtime.md" "skill routes runtime details to the runtime reference"
-  assert_not_contains "$skill" "digraph starks" "skill keeps the detailed state-machine graph out of the entrypoint"
-  if ! skill_lines="$(awk 'END { print NR }' "$SRC/SKILL.md" 2>/dev/null)"; then
-    fail "skill entrypoint line count is readable (awk failed)"
-  elif [[ ! "$skill_lines" =~ ^[0-9]+$ ]]; then
-    fail "skill entrypoint line count is numeric (actual=${skill_lines:-<empty>})"
-  elif [[ "$skill_lines" -ge 90 && "$skill_lines" -le 105 ]]; then
-    pass "skill entrypoint stays within 90-105 lines"
-  else
-    fail "skill entrypoint stays within 90-105 lines (actual=$skill_lines)"
-  fi
-  if [[ -s "$runtime" ]]; then
-    runtime_text="$(cat "$runtime")"
-    assert_contains "$runtime_text" "STARKS_REVIEW_MODEL_CODEX" "runtime reference documents the Codex reviewer model"
-    assert_contains "$runtime_text" "scripts/cross-review.sh" "runtime reference documents the cross-review wrapper"
-    assert_contains "$runtime_text" "spawn_agent" "runtime reference documents Codex subagent dispatch"
-    assert_contains "$runtime_text" "不触发任何读取、搜索、列举或写入" "runtime reference disables automatic project-memory access"
-    assert_contains "$runtime_text" "读取授权与写入授权相互独立" "runtime reference separates read and write approval"
-  fi
-
-  if [[ -s "$memory_ref" ]]; then
-    pass "memory reference exists and is non-empty"
-    memory_ref_text="$(cat "$memory_ref")"
-    assert_contains "$memory_ref_text" "## 零访问与任务级授权" "memory reference defines zero-access authorization"
-    assert_contains "$memory_ref_text" "## 授权后的安全路由" "memory reference defines cross-project routing"
-    assert_contains "$memory_ref_text" "## 深度读取" "memory reference defines separately-approved deep reads"
-    assert_contains "$memory_ref_text" "单行内联数组" "memory reference fixes routable frontmatter arrays"
-    assert_contains "$memory_ref_text" "edge_source" "memory reference preserves reverse-edge provenance"
-    assert_contains "$memory_ref_text" "MEMORY_ZERO_ACCESS=true" "memory reference has a stable zero-access contract"
-    assert_contains "$memory_ref_text" "MEMORY_SOURCE_OF_TRUTH=OBSIDIAN_MARKDOWN" "Obsidian is the cross-model source of truth"
-    assert_contains "$memory_ref_text" "MEMORY_NATIVE_MEMORY_POLICY=POINTERS_ONLY" "native memories only retain Obsidian pointers"
-    assert_contains "$memory_ref_text" "MEMORY_INDEX_POLICY=HUMAN_ONLY" "human index is excluded from machine recall"
-    assert_contains "$memory_ref_text" "MEMORY_ROUTE_MAX_ITEMS=60" "memory routing has a project-count budget"
-    assert_contains "$memory_ref_text" "MEMORY_ROUTE_MAX_CHARS=1500" "memory routing has a metadata character budget"
-    assert_contains "$memory_ref_text" "MEMORY_SUMMARY_MAX_FILES=3" "memory summary reads have a file budget"
-    assert_contains "$memory_ref_text" "MEMORY_SUMMARY_MAX_CHARS=4000" "memory summary reads have a character budget"
-    assert_contains "$memory_ref_text" "MEMORY_SUMMARY_MAX_EST_TOKENS=2500" "memory summary reads have an estimated token budget"
-    assert_contains "$memory_ref_text" "MEMORY_TASK_MAX_FILES=5" "memory deep reads have a total file budget"
-    assert_contains "$memory_ref_text" "MEMORY_TASK_MAX_CHARS=8000" "memory deep reads have a total character budget"
-    assert_contains "$memory_ref_text" "MEMORY_FACT_SCHEMA=key,fact,status,verified_at,source,expires?" "memory facts use a stable schema"
-    assert_contains "$memory_ref_text" "MEMORY_CURRENT_OBSERVATION_WINS=true" "live observations override memory"
-    assert_contains "$memory_ref_text" "MEMORY_REPO_ID_SOURCE=NORMALIZED_GIT_ORIGIN" "memory identity prefers a sanitized Git origin"
-    assert_contains "$memory_ref_text" "MEMORY_REPO_ID_FALLBACK=ROOT_REALPATH_HASH" "memory identity has a non-path local fallback"
-    assert_contains "$memory_ref_text" 'repo_id: github.com/example/fly-oa' "memory frontmatter carries a stable repo identity"
-    assert_contains "$memory_ref_text" "原始 remote URL 不得写入记忆或注入上下文" "memory identity strips remote secrets and raw URLs"
-    assert_contains "$memory_ref_text" '`repo_id` 只用于匹配，不进入路由输出' "repo identity does not consume routed context"
-    assert_contains "$memory_ref_text" "MEMORY_NEW_FILE_BASE_STATE=ABSENT" "new memory files have an explicit absent baseline"
-    assert_contains "$memory_ref_text" "MEMORY_MISSING_TARGET_VALIDATION=PARENT_REALPATH" "missing memory targets validate their existing parent"
-    assert_contains "$memory_ref_text" "MEMORY_LEGACY_UNMATCHED_ORDER=LAST" "unmatched legacy projects sort after canonical matches"
-  else
-    fail "memory reference exists and is non-empty"
-  fi
-
-  if [[ -s "$memory_reader_path" ]]; then
-    pass "memory reader prompt exists and is non-empty"
-    memory_reader="$(cat "$memory_reader_path")"
-    assert_contains "$memory_reader" "MEMORY_READ_OPT_IN" "memory reader carries the scoped read authorization key"
-    assert_contains "$memory_reader" "MEMORY_DEEP_READ_OPT_IN" "memory reader carries the deep-read authorization key"
-    assert_contains "$memory_reader" '唯一完全匹配的 `repo_id`' "memory reader resolves current project by stable repo identity"
-    assert_contains "$memory_reader" "不得输出原始 remote" "memory reader never returns the raw remote URL"
-  else
-    fail "memory reader prompt exists and is non-empty"
-  fi
-
-  if [[ -s "$pm_ref" ]]; then
-    pass "PM orchestration reference exists and is non-empty"
-    pm_text="$(cat "$pm_ref")"
-    assert_contains "$pm_text" "Backlog" "PM orchestration reference documents Backlog"
-    assert_contains "$pm_text" "Ready" "PM orchestration reference documents Ready"
-    assert_contains "$pm_text" "Spec Review" "PM orchestration reference documents Spec Review"
-    assert_contains "$pm_text" "Code Review" "PM orchestration reference documents Code Review"
-    assert_contains "$pm_text" "Dropped" "PM orchestration reference documents Dropped"
-    assert_contains "$pm_text" "Needs Input" "PM orchestration reference distinguishes user input from blocking"
-    assert_contains "$pm_text" "Failed" "PM orchestration reference distinguishes execution failure"
-    assert_contains "$pm_text" "## 派活单与状态" "PM orchestration uses the compact work-order contract"
-    assert_contains "$pm_text" "随身小抄" "PM supplies a minimal context cheat sheet"
-    assert_contains "$pm_text" "## 收工小票" "PM orchestration defines a bounded completion receipt"
-    assert_contains "$pm_text" "代理树最大深度为一" "only the main PM can spawn agents"
-    assert_contains "$pm_text" "默认 2000 个 Unicode 字符" "subagent returns have a default context budget"
-    assert_contains "$pm_text" "最多向原代理追补一次" "invalid completion receipts have a bounded retry"
-    assert_contains "$pm_text" "HARD-GATE" "PM orchestration reference preserves the HARD-GATE"
-    assert_contains "$pm_text" "## 工作保持型调度" "PM orchestration reference defines work-conserving scheduling"
-    assert_contains "$pm_text" "## 主 PM 与看板" "PM orchestration reference defines the PM board"
-    assert_contains "$pm_text" "## 动态接单" "PM orchestration reference defines dynamic intake"
-    assert_contains "$pm_text" "QUERY" "PM orchestration reference defines query intake"
-    assert_contains "$pm_text" "ADD" "PM orchestration reference defines additive intake"
-    assert_contains "$pm_text" "CHANGE" "PM orchestration reference defines scope-change intake"
-    assert_contains "$pm_text" "REPLACE" "PM orchestration reference defines replacement intake"
-    assert_contains "$pm_text" "PRIORITY" "PM orchestration reference defines priority intake"
-  else
-    fail "PM orchestration reference exists and is non-empty"
-  fi
-
-  assert_contains "$skill" "scripts/cross-review.sh" "skill delegates fragile cross-review invocation to a script"
-  assert_contains "$skill" "references/pm-orchestration.md" "skill routes PM orchestration details to the PM reference"
-  assert_contains "$skill" "references/memory.md" "skill routes memory details to the memory reference"
-  assert_contains "$skill" "prompts/memory-reader.md" "skill routes approved reads to the memory reader"
-  assert_contains "$skill" "Ready" "skill carries the stable ready-queue contract"
-  assert_not_contains "$skill" 'name="starks"' "skill does not document obsolete Codex name config"
-  assert_not_contains "$readme" '$STARKS_REVIEW_MODEL"' "README has no obsolete unsplit review-model variable"
-  assert_not_contains "$skill" "纯查询 / 概念解释" "non-work queries are outside starks task tiers"
-  assert_not_contains "$readme" "concept explanation" "English README keeps non-work queries outside task tiers"
-  assert_not_contains "$readme_zh" "纯查询 / 概念解释" "Chinese README keeps non-work queries outside task tiers"
-  assert_contains "$readme" "**Work-conserving scheduling**" "English README exposes the work-conserving scheduling feature"
-  assert_contains "$readme" "**Truthful status board**" "English README exposes the truthful status board feature"
-  assert_contains "$readme_zh" "**持续补位调度**" "Chinese README exposes the continuous scheduling feature"
-  assert_contains "$readme_zh" "**真实进度看板**" "Chinese README exposes the truthful progress board feature"
-  assert_contains "$skill" "**读取前询问**" "skill requires opt-in before reading project memory"
-  assert_contains "$skill" "**写入前询问**" "skill requires separate opt-in before writing project memory"
-  assert_contains "$skill" 'Read / rg / ls / find / stat' "skill forbids every pre-authorization memory access path"
-  assert_contains "$skill" "读取同意不等于写入同意" "skill does not reuse read approval for memory writes"
-  assert_contains "$skill" "当前直接观察永远优先于记忆" "skill makes live evidence override memory"
-  assert_contains "$readme" "**Scoped shared memory**" "English README exposes scoped shared memory"
-  assert_contains "$readme_zh" "**受控跨项目记忆**" "Chinese README exposes scoped shared memory"
-  assert_contains "$memory" "AUTH_MODE: MEMORY_WRITE_OPT_IN" "memory writer requires structured write authorization"
-  assert_contains "$memory" "AUTHORIZED_FILES:" "memory writer receives an authorized file list"
-  assert_contains "$memory" "AUTHORIZED_FACT_KEYS: [<获批新增或更新的 fact key>, ...] | NONE" "memory writer supports fact-key lists and summary-only writes"
-  assert_contains "$memory" "SUMMARY_CHANGES:" "memory writer receives authorized summary changes"
-  assert_contains "$memory" "CREATE_HISTORY:" "memory writer receives an authorized history decision"
-  assert_contains "$memory" "READ_STYLE_NOTE:" "memory writer discloses optional style-note reads"
-  assert_contains "$memory" "BASE_STATE=ABSENT" "memory writer handles concurrent creation of new files"
-  assert_contains "$memory" "no-clobber / exclusive-create" "memory writer never overwrites a concurrently-created file"
-  assert_not_contains "$memory" "checkpoint" "memory writer has no extra checkpoint prompt exception"
-  assert_not_contains "$skill" "动手或拷问前读" "skill no longer reads memory automatically before work"
-  assert_not_contains "$readme" "project memory is recalled at task start" "English README does not promise automatic memory recall"
-  assert_not_contains "$readme_zh" "任务开始先唤醒项目记忆" "Chinese README does not promise automatic memory recall"
-  assert_contains "$skill" "可用并发槽位" "parallel fan-out respects platform capacity"
-  assert_contains "$skill" "派活单 + 随身小抄" "skill gives subagents a minimal PM-owned context pack"
-  assert_contains "$skill" "收工小票" "skill requires a structured subagent return"
-  assert_contains "$skill" "不得再派生代理" "skill keeps the agent tree flat"
-  assert_contains "$runtime_text" "不传完整 session" "runtime mapping preserves one-way PM context supply"
-  assert_contains "$memory" '多个项目声明同一 `repo_id` 时 fail-closed' "memory writer refuses duplicate repository identities"
-  assert_contains "$project_summary" "repo_id: {REPO_ID}" "project summary template includes stable repo identity"
-  assert_contains "$project_summary" "aliases: []" "project summary template supports repository aliases"
-  assert_not_contains "$obsidian_readme" "自动沉淀" "Obsidian template does not promise automatic writes"
-  assert_contains "$design_text" "派活单 + 随身小抄" "design document matches the lean subagent contract"
-  assert_not_contains "$design_text" "Recall project memory first" "design document no longer promises automatic memory reads"
-  assert_not_contains "$design_text" "independent work into waves" "design document no longer describes wave scheduling"
-  assert_not_contains "$spec" "git diff / 测试" "spec reviewer does not classify tests as read-only"
-  assert_not_contains "$memory" "一律用 shell 写入" "memory writer is not tied to one machine's write hook"
-  assert_not_contains "$skill" "绕开拦 Write 的 hook" "skill does not instruct agents to bypass local hooks"
-  if [[ -s "$SRC/agents/openai.yaml" ]]; then
-    pass "Codex agents/openai.yaml metadata exists"
-  else
-    fail "Codex agents/openai.yaml metadata exists"
+    fail "skill entrypoint is concise (actual=$skill_lines)"
   fi
 }
 
 run_install_regression
+run_uninstall_regression
 run_cross_review_codex
 run_cross_review_claude
 run_cross_review_failures

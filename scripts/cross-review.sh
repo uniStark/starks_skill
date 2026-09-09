@@ -14,6 +14,7 @@ fi
 TMP_BASE="$(cd "$TMP_BASE" && pwd -P)"
 RUN_DIR=""
 PLAN_FILE=""
+REVIEW_INPUT_FILE=""
 
 cleanup() {
   if [[ -n "$RUN_DIR" && -d "$RUN_DIR" ]]; then
@@ -65,8 +66,9 @@ load_dotenv_key() {
 
 run_with_timeout() {
   local seconds="$1"
-  shift
-  STARKS_CROSS_REVIEW=1 python3 "$TIMEOUT_RUNNER" "$seconds" "$@" < "$PLAN_FILE"
+  local input_file="$2"
+  shift 2
+  STARKS_CROSS_REVIEW=1 python3 "$TIMEOUT_RUNNER" "$seconds" "$@" < "$input_file"
 }
 
 toml_escape() {
@@ -83,6 +85,21 @@ add_unique_path() {
     [[ "$existing" == "$candidate" ]] && return 0
   done
   skill_paths+=("$candidate")
+}
+
+add_skill_location() {
+  local location="$1"
+  local physical
+
+  [[ -f "$location/SKILL.md" ]] || return 0
+
+  # Codex 文档版本曾分别要求 skill 目录或 SKILL.md 文件路径；两种都传，
+  # 让 path-based disable 在新旧 CLI 上都能命中。
+  add_unique_path "$location"
+  add_unique_path "$location/SKILL.md"
+  physical="$(cd "$location" && pwd -P)"
+  add_unique_path "$physical"
+  add_unique_path "$physical/SKILL.md"
 }
 
 [[ "$#" -ge 1 && "$#" -le 2 ]] || usage
@@ -148,20 +165,29 @@ if ! RUN_DIR="$(mktemp -d "$TMP_BASE/starks-cross-review.XXXXXX")" || [[ -z "$RU
   exit 1
 fi
 PLAN_FILE="$RUN_DIR/plan.txt"
+REVIEW_WORKSPACE="$RUN_DIR/reviewer-workspace"
+mkdir -p "$REVIEW_WORKSPACE"
 cat > "$PLAN_FILE"
 if ! grep -q '[^[:space:]]' "$PLAN_FILE"; then
   echo "错误：待审查方案不能为空" >&2
   exit 2
 fi
+REVIEW_INPUT_FILE="$RUN_DIR/review-input.txt"
+{
+  printf '%s\n' "$review_prompt"
+  printf '\n--- BEGIN UNTRUSTED PLAN DATA ---\n'
+  cat "$PLAN_FILE"
+} > "$REVIEW_INPUT_FILE"
 
 if [[ "$engine" == "codex" ]]; then
   skill_paths=()
-  add_unique_path "$SRC"
-  installed_skill_path="${HOME:-}/.codex/skills/starks"
-  if [[ -n "${HOME:-}" && -f "$installed_skill_path/SKILL.md" ]]; then
-    add_unique_path "$installed_skill_path"
-    installed_physical="$(cd "$installed_skill_path" && pwd -P)"
-    add_unique_path "$installed_physical"
+  add_skill_location "$SRC"
+  if [[ -n "${CODEX_HOME:-}" ]]; then
+    add_skill_location "$CODEX_HOME/skills/starks"
+  fi
+  if [[ -n "${HOME:-}" ]]; then
+    add_skill_location "$HOME/.agents/skills/starks"
+    add_skill_location "$HOME/.codex/skills/starks"
   fi
 
   skills_config='['
@@ -176,21 +202,27 @@ if [[ "$engine" == "codex" ]]; then
   command=(
     codex exec
     --sandbox read-only
+    --disable shell_tool
     --ignore-user-config
     --ignore-rules
     --ephemeral
-    -C "$repo_dir"
+    --skip-git-repo-check
+    -C "$REVIEW_WORKSPACE"
     -c "skills.config=$skills_config"
+    -c 'shell_environment_policy.inherit="none"'
+    -c 'agents.enabled=false'
+    -c 'apps._default.enabled=false'
+    -c 'tools.web_search=false'
+    -c 'tools.view_image=false'
   )
-  if ! git -C "$repo_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    command+=(--skip-git-repo-check)
-  fi
   if [[ -n "${STARKS_REVIEW_MODEL_CODEX:-}" ]]; then
     command+=(-m "$STARKS_REVIEW_MODEL_CODEX")
   fi
-  command+=("$review_prompt")
+  # `-` 明确要求 Codex 把组合后的 reviewer 指令与方案都从 stdin 读取。
+  command+=(-)
 
-  run_with_timeout "$timeout_seconds" "${command[@]}"
+  cd "$REVIEW_WORKSPACE"
+  run_with_timeout "$timeout_seconds" "$REVIEW_INPUT_FILE" "${command[@]}"
 else
   command=(
     claude -p
@@ -202,8 +234,6 @@ else
   if [[ -n "${STARKS_REVIEW_MODEL_CLAUDE:-}" ]]; then
     command+=(--model "$STARKS_REVIEW_MODEL_CLAUDE")
   fi
-  command+=("$review_prompt")
-
-  cd "$repo_dir"
-  run_with_timeout "$timeout_seconds" "${command[@]}"
+  cd "$REVIEW_WORKSPACE"
+  run_with_timeout "$timeout_seconds" "$REVIEW_INPUT_FILE" "${command[@]}"
 fi
