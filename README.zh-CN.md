@@ -22,7 +22,7 @@
 ## 特色功能
 
 - **任务分档**——trivial / 轻量 / 完整三档按风险匹配流程。简单任务不交“流程税”，真正复杂的任务才走全套。
-- **跨模型互审（用户可选）**——方案门禁只给三个清楚选项：**直接开干 / 先让另一端模型互审 / 修改方案**。Claude↔Codex 互审不自动触发，也不会失败后偷偷跳过。
+- **跨模型互审（用户可选）**——设计文档或重大变更任务在方案门禁可选：**直接开干 / 跨模型互审 / 修改方案**；其余任务默认不互审、不询问，用户随时可主动提出。pi 上 reviewer 由 `subagent` 派发，模型与思考强度由用户从 pi registry 选择；Claude/Codex 上由另一端 CLI 互审。互审不自动触发，也不会失败后偷偷跳过。
 - **持续补位调度**——依赖 DAG 与 Ready 队列一有安全任务就填补空闲槽位；强耦合切片保持串行，不为看起来“多线程”而硬拆。
 - **轻装子代理**——主 PM 给每个单层子代理一张 **“派活单 + 随身小抄”**。子代理不重读 Session、通用项目文档和近期提交，完工只交一张有长度边界的 **“收工小票”**。
 - **真实进度看板**——主 PM 保持响应，只展示真实状态，不虚构百分比和 ETA；执行中仍可接收 `QUERY`、`ADD`、`CHANGE`、`REPLACE`、`PRIORITY`。
@@ -36,7 +36,8 @@
 ```text
 用户需求
   └─ 任务分档 → 需求拷问 → 起草方案
-                              └─ 用户三选：开干 / 跨模型互审 / 改方案
+                              └─ 用户定夺：开干 / 改方案
+                                   （设计文档与重大变更另有互审选项，绝不自动触发）
                                                │
 PM：依赖 DAG + Ready 队列                       │ 可选 Claude↔Codex 互审
   ├─ 派活单 + 随身小抄 → 单层子代理 A ─┐        │
@@ -62,11 +63,11 @@ PM：依赖 DAG + Ready 队列                       │ 可选 Claude↔Codex �
 
 ## 环境要求
 
-- Claude Code **或** Codex CLI（任一即可，两端都装可获得完整跨模型互审能力）
+- Claude Code、Codex CLI **或** pi（任一即可）
 - `bash`
 - `python3`（用于隔离 reviewer 进程组并执行硬超时）
 - macOS 或 Linux
-- 跨模型互审需要**另一端** CLI 在 `PATH` 中（`claude` / `codex`）
+- 跨模型互审：Claude/Codex 上需要**另一端** CLI 在 `PATH` 中（`claude` / `codex`）；pi 上需要 `subagent` 工具，或以任意外部 CLI 兜底
 - 可选：`gh`
 
 ## 安装
@@ -88,10 +89,14 @@ starks 从环境变量读取以下设置（都可选，有默认值或在缺失�
 | `STARKS_REVIEW_MODEL_CODEX` | Codex 当 reviewer 时（Claude→Codex）使用的模型 | 未设用 Codex 默认 |
 | `STARKS_REVIEW_MODEL_CLAUDE` | Claude 当 reviewer 时（Codex→Claude）使用的模型 | 未设用 Claude 默认 |
 | `STARKS_REVIEW_TIMEOUT_SECONDS` | 跨模型互审超时秒数 | `600` |
+| `STARKS_REVIEW_MODEL_PI` | pi reviewer 模型（registry 中精确的 `provider/id`） | 未设或为空则互审时询问 |
+| `STARKS_REVIEW_THINKING_PI` | pi reviewer 思考强度 | 未设或为空则询问（建议 `high`） |
+| `STARKS_AGENT_MODEL_PI` | pi 上 PM 派发子代理的默认模型 | 未设或为空则继承平台默认 |
+| `STARKS_AGENT_THINKING_PI` | pi 子代理默认思考强度 | 未设或为空则继承平台默认 |
 
-子代理默认继承平台全局默认模型与思考深度；主 PM 可按任务复杂度、风险与成本自行选择平台支持的覆盖参数，同时遵守用户明确配置与平台规则。选择仅作用于本次派发，不改写全局设置；不支持或未验证的项必须如实说明。详细规则见 [runtime reference](references/runtime.md)。
+子代理默认继承平台全局默认模型与思考深度；主 PM 可按任务复杂度、风险与成本自行选择平台支持的覆盖参数，同时遵守用户明确配置与平台规则。pi 上也可保存自己的默认子代理模型与思考强度（经 `/skill:starks subagents` 设置台，或完整档方案门禁的顺带一问，从 registry 选择）；已存默认约束所有派发，PM 只能建议偏离。选择不改写全局设置；不支持或未验证的项必须如实说明。详细规则见 [runtime reference](references/runtime.md)。
 
-上表变量仅控制外部跨模型互审 wrapper，不控制 PM 派发的子代理。reviewer 配置也可写入 `.env`；`scripts/cross-review.sh` 会自动读取，调用进程已导出的值优先。
+前三个变量仅控制外部跨模型互审 wrapper，`STARKS_REVIEW_*_PI` 键仅控制 pi 的互审 reviewer，`STARKS_AGENT_*_PI` 键仅控制 pi 的 PM 派发子代理。reviewer 配置也可写入 `.env`；`scripts/cross-review.sh` 会自动读取，调用进程已导出的值优先。pi 键在用户同意“存为默认”时写入 `.env`；随时可用 `/skill:starks cross-review` 与 `/skill:starks subagents` 设置台管理（其余后缀视为任务描述）。
 
 ## 工作原理
 
@@ -103,7 +108,7 @@ starks 先对任务**分档**，再决定走多重：
 
   1. **拷问需求**——读取相关文件与必要的近期 commit，合并独立问题，挖出隐藏假设、边界条件与成功标准。
   2. **起草方案**——收口需求并做轻量任务拆解。
-  3. **呈现方案 + 用户定夺**——把方案交给用户三选：**A 直接开干 / B 先让另一端模型互审再定 / C 修改方案**。仅当选 B 才跑跨模型互审，整合修订版后回到本步重新定夺。互审不自动触发，也不闷头跳过。
+  3. **呈现方案 + 用户定夺**——设计文档或重大变更任务交给用户三选：**A 直接开干 / B 跨模型互审再定 / C 修改方案**；其余任务只选 **A / C**，默认不互审、不主动提议，用户随时可要求互审。仅当选 B 才跑互审，整合修订版后回到本步重新定夺。
   4. **PM 持续调度子代理**——安全的 Ready 工作会在槽位释放后持续补位，无需等待整波完成；PM 用“派活单 + 随身小抄”给最小上下文，子代理不套娃、不自行扩域，只用“收工小票”回传结果。
   5. **两阶段审查**——先查规格合规，再查代码质量；不过回炉，最多 2 次，仍不过交回用户定夺。
   6. **完成门禁**——当场跑出验证证据才能宣称「完成 / 通过」。
@@ -119,7 +124,7 @@ scripts/cross-review.sh claude /path/to/repo < plan.md  # Codex → Claude
 
 ## pi 使用
 
-pi 默认没有子代理、计划模式或内置 Todo。因此在 pi 中使用 starks 时采用顺序降级：呈现方案、等待确认、一次执行一个切片、完成两阶段审查，再运行最终验证。只有完整档且确实需要持久化进度时，才建议使用 `.starks/plan.md` 和 `.starks/board.md`。
+starks 每次会话探测 pi 的实际能力。有 `subagent` 工具（pi-subagents）时走完整 PM 编排；互审由一次性 reviewer 子代理完成，模型与思考强度由用户选择，可存为 `.env` 默认。没有该工具时顺序降级：呈现方案、等待确认、一次执行一个切片、完成两阶段审查，再运行最终验证。只有完整档且确实需要持久化进度时，才建议使用 `.starks/plan.md` 和 `.starks/board.md`。
 
 ```bash
 bash scripts/install.sh
@@ -133,13 +138,13 @@ pi
 
 同一份 skill 契约在两个平台上以各自原生工具落地：
 
-| 动作 | Claude | Codex |
-|---|---|---|
-| 派并行子代理 | `Task` / `Agent` 工具 | `spawn_agent`（可用时） |
-| 交互式提问 | `AskUserQuestion` | `request_user_input`（可用时）/ 直接追问 |
-| 进度跟踪 | `TodoWrite` | `update_plan` |
-| 跨模型互审 | `scripts/cross-review.sh codex …` | `scripts/cross-review.sh claude …` |
-| 子代理模型 | 使用平台全局默认或由主代理决策 | 使用平台全局默认或由主代理决策 |
+| 动作 | Claude | Codex | pi |
+|---|---|---|---|
+| 派并行子代理 | `Task` / `Agent` 工具 | `spawn_agent`（可用时） | `subagent`（可用时），否则顺序执行 |
+| 交互式提问 | `AskUserQuestion` | `request_user_input`（可用时）/ 直接追问 | `ask_user_question` 或直接追问 |
+| 进度跟踪 | `TodoWrite` | `update_plan` | `todo`（可用时），否则 `.starks/board.md` |
+| 跨模型互审 | `scripts/cross-review.sh codex …` | `scripts/cross-review.sh claude …` | `subagent` reviewer（wrapper 仅用于外部 CLI） |
+| 子代理模型 | 平台全局默认或主代理决策 | 平台全局默认或主代理决策 | 平台全局默认或主代理决策（`provider/id:强度`） |
 
 ## 卸载
 

@@ -11,9 +11,12 @@ genuinely complex work walks the full flow of grill → draft → present → si
 
 The skill loads from a single `SKILL.md` on Claude Code, Codex CLI, and pi.
 External cross-review is configured through environment variables and requires
-Bash, Python 3, and the reviewer CLI. Sub-agent model and thinking depth inherit
-platform defaults or are chosen per task by the PM. pi uses a sequential fallback
-because it has no built-in sub-agent or plan system.
+Bash, Python 3, and the reviewer CLI; on pi the reviewer is a one-shot
+`subagent`-dispatched sub-agent instead. Sub-agent model and thinking depth
+inherit platform defaults, are chosen per task by the PM, or follow the user's
+saved pi defaults. On pi, starks probes
+for the `subagent` tool each session: with pi-subagents it runs the full
+orchestration, without it a sequential fallback applies.
 
 The guiding idea is **proportionality**: simple things stay simple, hard things
 get the rigor they need, and the user — not the agent — decides when to spend
@@ -74,15 +77,17 @@ grill → draft → present + decide ─┬─ (A) proceed ───────
    The draft is lightweight and lives in the conversation; it is not a separate
    plan artifact.
 
-3. **Present + decide** *(HARD-GATE)* — Show the plan to the user and offer exactly
-   three choices:
+3. **Present + decide** *(HARD-GATE)* — Show the plan to the user. For design
+   documents and major project changes, offer three choices:
    - **A — Proceed.** Move straight to execution.
-   - **B — Cross-review first.** Have the *other* engine review the plan, fold the
+   - **B — Cross-review first.** Have another model review the plan, fold the
      feedback into a revised plan, and return to this step.
    - **C — Revise.** Adjust the plan and re-present.
 
-   Execution never starts until the user picks A. Cross-review never runs unless
-   the user picks B.
+   Every other task gets only A / C: no review is offered or run by default,
+   keeping small features cheap. The user can still request a cross-review at
+   any moment, which enters the same flow. Execution never starts until the
+   user picks A. Cross-review never runs unless the user asks for it.
 
 4. **PM orchestration** — Picking A at step 3 is the sign-off. The PM maintains a
    dependency DAG and continuously fills open slots from the Ready queue. It sends
@@ -122,8 +127,10 @@ Key properties:
   which either errors out or, worse, silently truncates so the reviewer sees
   only part of the plan. stdin has no such limit.
 - **User-triggered, never automatic.** Cross-review is option **B** at the
-  present-and-decide gate. The agent neither runs it silently nor quietly skips it
-  — it always offers it as a choice and lets the user decide.
+  present-and-decide gate, and that option is only offered for design documents
+  and major project changes — the tasks where a second read pays for itself.
+  The agent neither runs it silently nor quietly skips the offer when it is in
+  scope; outside that scope it stays off unless the user asks.
 - **Single round, synchronous.** The full plan plus a review prompt are sent to
   the other engine; the agent waits for the critique, folds it into a revised
   plan, and returns to the present-and-decide gate for a fresh A/B/C decision.
@@ -142,6 +149,13 @@ writes, or executes project content. A generous timeout (about ten minutes)
 guards against hangs. The engine used on the far side is selected via
 configuration (see Configuration), defaulting to the reviewer CLI's configured
 model.
+
+On pi there is no second engine CLI requirement: the reviewer is a one-shot
+sub-agent dispatched through `subagent` (read-only toolset, fresh context). The
+user picks its model from pi's session registry and its thinking depth, and may
+save both as defaults in `.env` (`STARKS_REVIEW_MODEL_PI` /
+`STARKS_REVIEW_THINKING_PI`); recursion is prevented by the reviewer prompt and
+the read-only toolset. See `references/runtime.md` for the full pi flow.
 
 ---
 
@@ -194,11 +208,11 @@ neutral action to its native tool.
 
 | Action | Claude | Codex | pi |
 |---|---|---|---|
-| Spawn parallel sub-agents | `Task` | `spawn_agent` when available | sequential fallback |
-| Await / release a sub-agent | returns automatically | `wait_agent` / platform mechanism | not applicable by default |
-| Ask the user a question | `AskUserQuestion` | `request_user_input` when available | direct follow-up |
-| Track progress | `TodoWrite` | `update_plan` | optional `.starks/board.md` |
-| Invoke the other engine (cross-review) | Codex CLI | Claude CLI | external Codex / Claude CLI |
+| Spawn parallel sub-agents | `Task` | `spawn_agent` when available | `subagent` when available, else sequential |
+| Await / release a sub-agent | returns automatically | `wait_agent` / platform mechanism | native completion notice, `bg_wait` otherwise |
+| Ask the user a question | `AskUserQuestion` | `request_user_input` when available | `ask_user_question` or direct follow-up |
+| Track progress | `TodoWrite` | `update_plan` | `todo`, else optional `.starks/board.md` |
+| Invoke the other engine (cross-review) | Codex CLI | Claude CLI | `subagent` reviewer (wrapper only for external CLIs) |
 
 The skill body never hard-codes a platform's tool name in its prose; it refers to
 the neutral action and lets the table resolve it. This keeps a single source of
@@ -210,9 +224,11 @@ truth and avoids drift between two platform-specific copies.
 
 - **HARD-GATE on present-and-decide (full tier only).** Execution must not begin
   before the user signs off on a presented plan. This gate exists only in the full
-  tier — trivial and lightweight work has nothing to gate. The gate is also where
-  cross-review is offered, so the user controls both *whether to build* and
-  *whether to get a second opinion first*.
+  tier — trivial and lightweight work has nothing to gate. For design documents
+  and major changes the gate is also where cross-review is offered, so the user
+  controls both *whether to build* and *whether to get a second opinion first*;
+  smaller work proceeds without the extra question, though the user may always
+  ask for a review.
 
 - **The completion gate is universal.** Every tier — including trivial — must
   produce verification evidence before claiming success. "Should work" is not
@@ -237,7 +253,10 @@ stay deliberately cheap.
 
 Sub-agent model and thinking depth are not hard-coded. Prefer the platform global
 configuration; the PM may choose supported overrides based on complexity, risk,
-and cost, respecting explicit user settings and platform rules. Choices apply
-only to the dispatch and never rewrite global configuration. Check support for
+and cost, respecting explicit user settings and platform rules. On pi the user
+may also save an explicit default sub-agent model and thinking depth (managed
+via the `/skill:starks subagents` console or a one-time offer at the full-tier
+plan gate); a saved default binds every dispatch and the PM may only suggest
+deviations. Choices never rewrite global configuration. Check support for
 model and thinking-depth selection independently, and distinguish a requested
 setting from one verified by runtime metadata.

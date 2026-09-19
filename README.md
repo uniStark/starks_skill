@@ -24,7 +24,7 @@ Its distinctive move is at the plan boundary: **you** decide whether Claude and 
 ## Signature features
 
 - **Task tiering** — trivial / light / full modes scale the process to the risk. Simple work stays fast; only genuine complexity pays for the full workflow.
-- **Cross-model review (you choose)** — at the hard plan gate, choose **start now / ask the other model / revise**. Claude↔Codex review is never automatic and never silently skipped.
+- **Cross-model review (you choose)** — for design docs and major changes, the plan gate offers **start now / cross-review / revise**; everything else defaults to no review, and you can request one anytime. On pi the reviewer is a one-shot sub-agent whose model and thinking depth you pick from pi's registry; on Claude/Codex it is the other engine's CLI. Review is never automatic and never silently skipped.
 - **Work-conserving scheduling** — a dependency DAG and Ready queue fill open slots as soon as safe work appears. Strongly coupled slices stay sequential instead of being split for vanity parallelism.
 - **Lean sub-agents** — the PM sends each flat child a compact **“派活单 + 随身小抄”** (work order + context cheat sheet). Children do not reload the session, general project docs, or recent commits; they return one bounded **“收工小票”** (completion receipt).
 - **Truthful status board** — the PM stays responsive, shows real state rather than invented percentages or ETAs, and keeps accepting `QUERY`, `ADD`, `CHANGE`, `REPLACE`, and `PRIORITY` while execution continues.
@@ -38,7 +38,9 @@ Its distinctive move is at the plan boundary: **you** decide whether Claude and 
 ```text
 request
   └─ task tier → requirement grill → plan
-                                  └─ you choose: start / cross-review / revise
+                                  └─ you choose: start / revise
+                                       (+ cross-review option for designs
+                                        and major changes — never automatic)
                                                    │
 PM: dependency DAG + Ready queue                    │ optional Claude↔Codex pass
   ├─ 派活单 + 随身小抄 → flat child A ─┐            │
@@ -64,11 +66,11 @@ That receipt feeds the live board and review queue without dumping raw logs, lon
 
 ## Requirements
 
-- Claude Code **or** Codex CLI
+- Claude Code, Codex CLI, **or** pi
 - `bash`
 - `python3` (process-group timeout runner)
 - macOS or Linux
-- Cross-model review needs the *other* engine's CLI on your `PATH` (`claude` / `codex`)
+- Cross-model review: on Claude/Codex it needs the *other* engine's CLI on your `PATH` (`claude` / `codex`); on pi it needs the `subagent` tool, or an external CLI as fallback
 - Optional: `gh` (maintenance only)
 
 ## Installation
@@ -90,10 +92,14 @@ starks reads a few optional environment variables (all have defaults or degrade 
 | `STARKS_REVIEW_MODEL_CODEX` | reviewer model when Codex reviews the plan (Claude→Codex) | unset → codex default |
 | `STARKS_REVIEW_MODEL_CLAUDE` | reviewer model when Claude reviews the plan (Codex→Claude) | unset → claude default |
 | `STARKS_REVIEW_TIMEOUT_SECONDS` | cross-review timeout in seconds | `600` |
+| `STARKS_REVIEW_MODEL_PI` | pi reviewer model (exact `provider/id` from pi's registry) | unset/empty → ask during review setup |
+| `STARKS_REVIEW_THINKING_PI` | pi reviewer thinking depth | unset/empty → ask (`high` suggested) |
+| `STARKS_AGENT_MODEL_PI` | default model for pi PM-dispatched sub-agents | unset/empty → platform default |
+| `STARKS_AGENT_THINKING_PI` | default thinking depth for pi sub-agents | unset/empty → platform default |
 
-Sub-agents inherit the platform's global model and thinking-depth defaults. The PM may choose supported overrides based on task complexity, risk, and cost, while respecting explicit user settings and platform rules. Choices apply only to the dispatch and never rewrite global settings; unsupported or unverified selections must be reported honestly. See [runtime rules](references/runtime.md).
+Sub-agents inherit the platform's global model and thinking-depth defaults. The PM may choose supported overrides based on task complexity, risk, and cost, while respecting explicit user settings and platform rules. On pi you can also save your own default sub-agent model and thinking depth (chosen from pi's registry via `/skill:starks subagents`, or the one-time offer at the full-tier plan gate); a saved default binds every dispatch and the PM may only suggest deviations. Choices never rewrite global settings; unsupported or unverified selections must be reported honestly. See [runtime rules](references/runtime.md).
 
-The variables above apply only to the external cross-review wrapper, not to PM-dispatched sub-agents. Reviewer settings may also live in `.env`; `scripts/cross-review.sh` reads them automatically and already-exported values take precedence.
+The first three variables apply only to the external cross-review wrapper, the two `STARKS_REVIEW_*_PI` keys only to pi's review sub-agent, and the `STARKS_AGENT_*_PI` keys only to pi's PM-dispatched sub-agents. Reviewer settings may also live in `.env`; `scripts/cross-review.sh` reads them automatically and already-exported values take precedence. The pi keys are written to `.env` when you approve "save as default" in the setup flows; manage them anytime via the `/skill:starks cross-review` and `/skill:starks subagents` settings consoles (any other skill arguments are treated as the task).
 
 ## How it works
 
@@ -103,7 +109,7 @@ starks doesn't run the same heavyweight pipeline on everything. When real work s
 - **light** — a single clear concern across a few files. Do it (or confirm in one line) and skip the parallel / cross-review machinery, but the verification gate still applies.
 - **full** — multi-file, architectural, large behavior change, or genuinely uncertain. This runs the whole flow.
 
-For a full-tier task the flow is: **grill** the requirements → **draft** a plan → **present it for one decision** (start / cross-review / revise). Only after sign-off does the PM execute, using platform-supported delegation or a sequential fallback, then run the **two-stage review** and **verification gate**. See the [PM orchestration reference](references/pm-orchestration.md) and [runtime reference](references/runtime.md).
+For a full-tier task the flow is: **grill** the requirements → **draft** a plan → **present it for one decision** (start / revise, plus a cross-review option for design docs and major changes). Only after sign-off does the PM execute, using platform-supported delegation or a sequential fallback, then run the **two-stage review** and **verification gate**. See the [PM orchestration reference](references/pm-orchestration.md) and [runtime reference](references/runtime.md).
 
 Cross-review uses one stable wrapper; the full plan always travels over stdin:
 
@@ -114,7 +120,7 @@ scripts/cross-review.sh claude /path/to/repo < plan.md  # Codex → Claude
 
 ## pi usage
 
-pi has no built-in sub-agents, plan mode, or todo system. In pi, starks uses a sequential fallback: present the plan, wait for approval, execute one slice at a time, perform the two review stages, and run the final verification. Use `.starks/plan.md` and `.starks/board.md` only for full tasks where durable progress is useful.
+starks probes pi's actual tools each session. With the `subagent` tool (pi-subagents) it runs the full PM orchestration, and cross-review runs as a one-shot reviewer sub-agent whose model and thinking depth you pick — optionally saved as defaults in `.env`. Without that tool it falls back to sequential execution: present the plan, wait for approval, execute one slice at a time, perform the two review stages, and run the final verification. Use `.starks/plan.md` and `.starks/board.md` only for full tasks where durable progress is useful.
 
 ```bash
 bash scripts/install.sh
@@ -128,12 +134,12 @@ The installer does not change pi authentication, models, settings, or extensions
 
 One skill, two engines — starks maps each step to the platform's native tools.
 
-| Action | Claude | Codex |
-|---|---|---|
-| Spawn parallel sub-agents | `Task` / `Agent` | `spawn_agent` when available |
-| Track progress | `TodoWrite` | `update_plan` |
-| Cross-model review | `scripts/cross-review.sh codex …` | `scripts/cross-review.sh claude …` |
-| Select sub-agent model | use platform global default or PM decision | use platform global default or PM decision |
+| Action | Claude | Codex | pi |
+|---|---|---|---|
+| Spawn parallel sub-agents | `Task` / `Agent` | `spawn_agent` when available | `subagent` when available, else sequential |
+| Track progress | `TodoWrite` | `update_plan` | `todo` when available, else `.starks/board.md` |
+| Cross-model review | `scripts/cross-review.sh codex …` | `scripts/cross-review.sh claude …` | `subagent` reviewer (wrapper only for external CLIs) |
+| Select sub-agent model | platform default or PM decision | platform default or PM decision | platform default or PM decision (`provider/id:thinking`) |
 
 ## Uninstall
 
